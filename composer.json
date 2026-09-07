@@ -1,0 +1,54 @@
+{
+    "name": "glerner/merge-multisite",
+    "description": "Standalone CLI tools to audit and merge a WordPress multisite network into a single site",
+    "version": "0.1.0",
+    "type": "project",
+    "license": "GPL-2.0-or-later",
+    "authors": [
+        {
+            "name": "George Lerner",
+            "homepage": "https://glerner.com"
+        }
+    ],
+    "minimum-stability": "stable",
+    "require": {
+        "php": ">=8.2",
+        "ext-pdo": "*",
+        "ext-json": "*",
+        "ext-hash": "*"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^11.0",
+        "squizlabs/php_codesniffer": "^3.6",
+        "slevomat/coding-standard": "^8.17",
+        "wp-coding-standards/wpcs": "^3.1",
+        "dealerdirect/phpcodesniffer-composer-installer": "^1.0",
+        "phpstan/phpstan": "^1.10"
+    },
+    "autoload": {
+        "psr-4": {
+            "MergeMultisite\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "MergeMultisite\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit",
+        "test:unit": "phpunit --testsuite unit",
+        "test:integration": "phpunit --testsuite integration",
+        "phpcs": "phpcs",
+        "phpcbf": "phpcbf",
+        "analyze": "phpstan analyse --configuration=phpstan.neon"
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "preferred-install": "dist",
+        "sort-packages": true,
+        "allow-plugins": {
+            "dealerdirect/phpcodesniffer-composer-installer": true
+        }
+    }
+}

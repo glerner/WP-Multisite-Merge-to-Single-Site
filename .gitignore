@@ -1,0 +1,14 @@
+/vendor/
+/var/logs/*
+/var/reports/*
+/var/state/*
+!/var/logs/.gitkeep
+!/var/reports/.gitkeep
+!/var/state/.gitkeep
+
+/config/config.php
+/config/sites.php
+/config/option-keys.php
+/config/term-overrides.php
+
+.phpunit.result.cache

@@ -1,0 +1,99 @@
+<?xml version="1.0"?>
+<ruleset name="Merge Multisite Coding Standards">
+    <description>Coding standards for the merge-multisite CLI tools</description>
+
+    <file>bin</file>
+    <file>src</file>
+    <file>tests</file>
+
+    <arg name="extensions" value="php"/>
+    <arg value="-colors"/>
+    <arg value="ns"/>
+
+    <exclude-pattern>/vendor/*</exclude-pattern>
+    <exclude-pattern>/var/*</exclude-pattern>
+
+    <!--
+        This project is a standalone modern PHP CLI tool (not a WordPress
+        plugin/theme, no WordPress bootstrap, no $wpdb, no output escaping,
+        no i18n) that happens to read/write WordPress databases. We use the
+        WordPress ruleset for its formatting conventions (tabs, brace
+        placement, array() usage) to stay consistent with this author's
+        other projects, but exclude the WordPress-plugin-specific rules
+        that don't apply to this kind of codebase.
+    -->
+    <rule ref="WordPress">
+        <exclude name="WordPress.Files.FileName"/>
+        <exclude name="WordPress.WP.I18n"/>
+        <exclude name="WordPress.WP.GlobalVariablesOverride"/>
+        <exclude name="WordPress.NamingConventions.ValidVariableName"/>
+        <exclude name="WordPress.NamingConventions.ValidFunctionName"/>
+        <exclude name="WordPress.NamingConventions.PrefixAllGlobals"/>
+        <exclude name="WordPress.Security.EscapeOutput"/>
+        <exclude name="WordPress.DB.PreparedSQL"/>
+        <exclude name="WordPress.DB.PreparedSQLPlaceholders"/>
+        <exclude name="WordPress.DB.DirectDatabaseQuery"/>
+        <exclude name="WordPress.PHP.DiscouragedPHPFunctions"/>
+        <exclude name="WordPress.Arrays.ArrayIndentation"/>
+        <!-- Not requiring Yoda conditions for this modern, non-WP-prefixed codebase. -->
+        <exclude name="WordPress.PHP.YodaConditions"/>
+        <!-- date() is fine here: log/report timestamps, not WP post dates. -->
+        <exclude name="WordPress.DateTime.RestrictedFunctions.date_date"/>
+        <!--
+            The "WordPress" ruleset pulls in WordPress-Docs, which requires a
+            full docblock (with a prose comment on every parameter) on every
+            function/method, plus a separate file-level docblock on every
+            file, plus a docblock on every property. This project's classes
+            are typed and use `declare(strict_types=1)` throughout, and every
+            class already carries its own explanatory docblock (enforced
+            below via Squiz.Commenting.ClassComment), so per-parameter prose
+            and per-file headers are excluded as redundant noise rather than
+            useful documentation.
+        -->
+        <exclude name="Squiz.Commenting.FunctionComment.Missing"/>
+        <exclude name="Squiz.Commenting.FunctionComment.MissingParamTag"/>
+        <exclude name="Squiz.Commenting.FunctionComment.MissingParamComment"/>
+        <exclude name="Squiz.Commenting.FunctionComment.ParamNameNoMatch"/>
+        <exclude name="Squiz.Commenting.FunctionComment.IncorrectTypeHint"/>
+        <exclude name="Squiz.Commenting.FileComment"/>
+        <exclude name="Squiz.Commenting.VariableComment.Missing"/>
+        <exclude name="Generic.Commenting.DocComment.MissingShort"/>
+    </rule>
+
+    <!-- Standard PSR naming (StudlyCaps classes, camelCase methods). -->
+    <rule ref="PSR1.Classes.ClassDeclaration"/>
+    <rule ref="PSR1.Methods.CamelCapsMethodName"/>
+
+    <config name="testVersion" value="8.2-"/>
+
+    <!-- Require type hints on parameters and return values. -->
+    <rule ref="SlevomatCodingStandard.TypeHints.ParameterTypeHint">
+        <exclude name="SlevomatCodingStandard.TypeHints.ParameterTypeHint.MissingTraversableTypeHintSpecification"/>
+    </rule>
+    <rule ref="SlevomatCodingStandard.TypeHints.ReturnTypeHint">
+        <exclude name="SlevomatCodingStandard.TypeHints.ReturnTypeHint.MissingTraversableTypeHintSpecification"/>
+        <exclude name="SlevomatCodingStandard.TypeHints.ReturnTypeHint.UselessAnnotation"/>
+    </rule>
+    <rule ref="SlevomatCodingStandard.TypeHints.PropertyTypeHint">
+        <exclude name="SlevomatCodingStandard.TypeHints.PropertyTypeHint.MissingTraversableTypeHintSpecification"/>
+    </rule>
+
+    <!-- Docblocks: every class in bin/ and src/ must have a doc comment
+         explaining its purpose, and every @throws must be documented.
+         Per-parameter prose comments and one-line "short descriptions"
+         are not required, since this project's classes/methods are
+         typed (native PHP type hints) and named descriptively, so
+         requiring a redundant English sentence per parameter would be
+         noise rather than useful documentation. Tests are exempt
+         entirely (test method names are self-documenting). -->
+    <rule ref="Squiz.Commenting.FunctionCommentThrowTag">
+        <exclude-pattern>*/tests/*</exclude-pattern>
+    </rule>
+    <rule ref="Squiz.Commenting.ClassComment">
+        <exclude-pattern>*/tests/*</exclude-pattern>
+    </rule>
+
+    <rule ref="Squiz.Commenting.InlineComment.InvalidEndChar">
+        <severity>0</severity>
+    </rule>
+</ruleset>

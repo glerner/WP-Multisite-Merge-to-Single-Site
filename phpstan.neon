@@ -1,0 +1,9 @@
+parameters:
+    level: 5
+    paths:
+        - bin
+        - src
+    excludePaths:
+        - vendor/*
+        - var/*
+    tmpDir: var/state/phpstan
