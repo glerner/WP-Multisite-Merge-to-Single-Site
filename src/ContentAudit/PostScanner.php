@@ -42,6 +42,29 @@ final class PostScanner {
 	}
 
 	/**
+	 * Like scan(), but also returns the underlying ScannedPost for
+	 * every row, so report writers that need raw content/meta (e.g.
+	 * the "needs review" CSV with raw page-builder data dumps) can
+	 * access it without a second database pass.
+	 *
+	 * @param Site[]   $sites
+	 * @param string[] $postTypes Post types to include; empty array means "all".
+	 *
+	 * @return array<int, array{row: ContentAuditRow, post: ScannedPost}>
+	 */
+	public function scanWithDetails( Connection $connection, array $sites, array $postTypes = array() ): array {
+		$results = array();
+
+		foreach ( $sites as $site ) {
+			foreach ( $this->scanSiteWithDetails( $connection, $site, $postTypes ) as $result ) {
+				$results[] = $result;
+			}
+		}
+
+		return $results;
+	}
+
+	/**
 	 * Ad-hoc full-content search across all given sites (e.g. finding
 	 * every post containing a spam keyword like "cialis"), used by
 	 * `site-audit.php --search=...`. Unlike scan(), this is a plain
@@ -96,10 +119,18 @@ final class PostScanner {
 		$hits = array();
 		foreach ( $posts as $post ) {
 			$haystack = (string) $post['post_title'] . "\n" . (string) $post['post_content'];
-			$lowerHaystack = strtolower( $haystack );
 
 			foreach ( $needles as $needle ) {
-				if ( str_contains( $lowerHaystack, strtolower( $needle ) ) ) {
+				// Word-boundary match, not a bare substring check --
+				// "cialis" is literally a substring of "specialist",
+				// so a plain str_contains() would false-positive on
+				// any post mentioning e.g. a "Certified Nutrition
+				// Specialist". This still isn't a thorough spam/
+				// malware scan (see the disclaimer printed by the
+				// --search CLI option) -- just a keyword sweep with
+				// that specific class of false positive fixed.
+				$pattern = '/\b' . preg_quote( $needle, '/' ) . '\b/i';
+				if ( preg_match( $pattern, $haystack ) === 1 ) {
 					$hits[] = array(
 						'blog_id' => $site->blogId,
 						'post_id' => (int) $post['ID'],
@@ -123,6 +154,20 @@ final class PostScanner {
 	 * @return ContentAuditRow[]
 	 */
 	private function scanSite( Connection $connection, Site $site, array $postTypes ): array {
+		$rows = array();
+		foreach ( $this->scanSiteWithDetails( $connection, $site, $postTypes ) as $result ) {
+			$rows[] = $result['row'];
+		}
+
+		return $rows;
+	}
+
+	/**
+	 * @param string[] $postTypes
+	 *
+	 * @return array<int, array{row: ContentAuditRow, post: ScannedPost}>
+	 */
+	private function scanSiteWithDetails( Connection $connection, Site $site, array $postTypes ): array {
 		$postsTable = $connection->siteTable( 'posts', $site->blogId );
 		$postMetaTable = $connection->siteTable( 'postmeta', $site->blogId );
 
@@ -140,7 +185,7 @@ final class PostScanner {
 		}
 
 		$posts = $connection->fetchAll(
-			"SELECT ID, post_type, post_status, post_name, post_content FROM {$postsTable} WHERE {$where}",
+			"SELECT ID, post_type, post_status, post_name, post_title, post_content FROM {$postsTable} WHERE {$where}",
 			$params
 		);
 
@@ -150,7 +195,7 @@ final class PostScanner {
 
 		$metaByPost = $this->fetchMetaForPosts( $connection, $postMetaTable, array_column( $posts, 'ID' ) );
 
-		$rows = array();
+		$results = array();
 		foreach ( $posts as $post ) {
 			$postId = (int) $post['ID'];
 
@@ -160,6 +205,7 @@ final class PostScanner {
 				postType: (string) $post['post_type'],
 				postStatus: (string) $post['post_status'],
 				slug: (string) $post['post_name'],
+				postTitle: (string) $post['post_title'],
 				content: (string) $post['post_content'],
 				meta: $metaByPost[ $postId ] ?? array(),
 			);
@@ -172,18 +218,21 @@ final class PostScanner {
 				}
 			}
 
-			$rows[] = new ContentAuditRow(
-				blogId: $site->blogId,
-				domain: $site->domain,
-				postId: $postId,
-				postType: $scannedPost->postType,
-				postStatus: $scannedPost->postStatus,
-				slug: $scannedPost->slug,
-				categoryFindings: $categoryFindings,
+			$results[] = array(
+				'row' => new ContentAuditRow(
+					blogId: $site->blogId,
+					domain: $site->domain,
+					postId: $postId,
+					postType: $scannedPost->postType,
+					postStatus: $scannedPost->postStatus,
+					slug: $scannedPost->slug,
+					categoryFindings: $categoryFindings,
+				),
+				'post' => $scannedPost,
 			);
 		}
 
-		return $rows;
+		return $results;
 	}
 
 	/**

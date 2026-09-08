@@ -45,6 +45,7 @@ final class GalleryDetectorTest extends TestCase {
 			'page',
 			'publish',
 			'portfolio',
+			'Portfolio',
 			'',
 			array( '_elementor_data' => array( '[{"widgetType":"gallery","settings":{}}]' ) )
 		);
@@ -61,6 +62,7 @@ final class GalleryDetectorTest extends TestCase {
 			'page',
 			'publish',
 			'portfolio',
+			'Portfolio',
 			'',
 			array( '_fl_builder_data' => array( '[{"type":"gallery"}]' ) )
 		);
@@ -77,6 +79,6 @@ final class GalleryDetectorTest extends TestCase {
 	}
 
 	private function makePost( string $content ): ScannedPost {
-		return new ScannedPost( 1, 1, 'page', 'publish', 'portfolio', $content, array() );
+		return new ScannedPost( 1, 1, 'page', 'publish', 'portfolio', 'Portfolio', $content, array() );
 	}
 }

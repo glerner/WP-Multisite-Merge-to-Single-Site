@@ -61,6 +61,6 @@ final class EcommerceDetectorTest extends TestCase {
 	}
 
 	private function makePost( string $postType, string $content ): ScannedPost {
-		return new ScannedPost( 1, 1, $postType, 'publish', 'shop', $content, array() );
+		return new ScannedPost( 1, 1, $postType, 'publish', 'shop', 'Shop', $content, array() );
 	}
 }

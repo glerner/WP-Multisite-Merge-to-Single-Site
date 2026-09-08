@@ -22,6 +22,7 @@ final class ScannedPost {
 		public readonly string $postType,
 		public readonly string $postStatus,
 		public readonly string $slug,
+		public readonly string $postTitle,
 		public readonly string $content,
 		public readonly array $meta,
 	) {

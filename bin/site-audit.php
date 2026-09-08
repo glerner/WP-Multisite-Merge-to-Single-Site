@@ -34,10 +34,12 @@ require_once dirname( __DIR__ ) . '/vendor/autoload.php';
 
 use MergeMultisite\Config\ConfigException;
 use MergeMultisite\Config\ConfigLoader;
+use MergeMultisite\ContentAudit\ContentAuditRow;
 use MergeMultisite\ContentAudit\Detectors\BlockDetector;
 use MergeMultisite\ContentAudit\Detectors\EcommerceDetector;
 use MergeMultisite\ContentAudit\Detectors\FormPluginDetector;
 use MergeMultisite\ContentAudit\Detectors\GalleryDetector;
+use MergeMultisite\ContentAudit\Detectors\NeedsReviewDetector;
 use MergeMultisite\ContentAudit\Detectors\PageBuilderDetector;
 use MergeMultisite\ContentAudit\Detectors\SeoPluginDetector;
 use MergeMultisite\ContentAudit\Detectors\ShortcodeDetector;
@@ -46,6 +48,7 @@ use MergeMultisite\ContentAudit\PostScanner;
 use MergeMultisite\Db\Connection;
 use MergeMultisite\Migration\SiteSelector;
 use MergeMultisite\Report\ContentAuditReportWriter;
+use MergeMultisite\Report\NeedsReviewReportWriter;
 use MergeMultisite\Support\CliArguments;
 use MergeMultisite\Support\Logger;
 
@@ -102,6 +105,12 @@ if ( $searchOption !== null ) {
 		exit( 1 );
 	}
 
+	$logger->info(
+		'NOTE: this is a whole-word keyword sweep, not a thorough spam/malware scan -- '
+		. 'generic single words can still false-positive on unrelated legitimate content '
+		. '(e.g. a very specific/distinctive term is far more reliable than a common word). '
+		. 'Treat matches as a starting point for manual review, not a verdict.'
+	);
 	$logger->info( sprintf( 'Searching %d site(s) for: %s', count( $sites ), implode( ', ', $needles ) ) );
 
 	$hits = $scanner->searchContent( $source, $sites, $needles, $postTypes );
@@ -156,12 +165,14 @@ $detectors = array(
 	new VideoEmbedDetector(),
 	new SeoPluginDetector(),
 	new EcommerceDetector(),
+	new NeedsReviewDetector(),
 );
 
 $logger->info( sprintf( 'Scanning %d site(s) with %d detector(s)...', count( $sites ), count( $detectors ) ) );
 
 $scanner = new PostScanner( $detectors );
-$rows = $scanner->scan( $source, $sites, $postTypes );
+$details = $scanner->scanWithDetails( $source, $sites, $postTypes );
+$rows = array_map( static fn ( array $d ): ContentAuditRow => $d['row'], $details );
 
 $categories = array_map(
 	static fn ( $detector ): string => $detector->category(),
@@ -175,9 +186,27 @@ $paths = ( new ContentAuditReportWriter() )->write(
 	'site-audit-' . date( 'Ymd-His' )
 );
 
+// The "needs review" CSV: only pages carrying a page-builder /
+// slideshow / complex-plugin footprint, with original + guessed
+// destination URL and raw data dumps for each plugin found.
+$needsReviewPath = ( new NeedsReviewReportWriter() )->write(
+	$details,
+	$config->destinationUrl,
+	$projectRoot . '/var/reports',
+	'site-audit-needs-review-' . date( 'Ymd-His' )
+);
+
+$needsReviewCount = count(
+	array_filter(
+		$rows,
+		static fn ( ContentAuditRow $row ): bool => ( $row->categoryFindings['needs_review'] ?? array() ) !== array()
+	)
+);
+
 $logger->info( sprintf( 'Scanned %d post(s)/page(s).', count( $rows ) ) );
 $logger->info( sprintf( 'CSV: %s', $paths['csv'] ) );
 $logger->info( sprintf( 'JSON: %s', $paths['json'] ) );
 $logger->info( sprintf( 'Summary: %s', $paths['summary'] ) );
+$logger->info( sprintf( '%d page(s) likely needing manual review after migration. CSV: %s', $needsReviewCount, $needsReviewPath ) );
 
 exit( 0 );

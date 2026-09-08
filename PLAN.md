@@ -702,6 +702,41 @@ blocking issues are found; `--strict` flag to also fail on warnings.
 Each phase ships with its own tests and can be run/reviewed
 independently rather than as one big-bang script.
 
+## 12.5 Future enhancements (design notes, not committed work)
+
+Long-term product ideas recorded so they stay on the record; none of
+these are scheduled work:
+
+- **Divi→Block Editor converter (long-term product idea).** Go through
+  everything on a page that is from Divi (and, by extension, other page
+  builders), convert everything that *can* be converted to native
+  blocks automatically, and emit all the details needed to convert the
+  remainder by hand. This project (site-audit's detector framework +
+  raw-data extraction) is explicitly doing the preliminary detection/
+  inventory work for it.
+- **Per-builder "content inventory" exporter.** Extend `site-audit.php`
+  (currently the `needs-review` CSV with raw dumps) into a structured,
+  tree-view-like inventory of every element on a page per page builder
+  (Elementor's `_elementor_data` JSON tree; Divi's shortcode attribute
+  pairs; block JSON attributes), exportable to CSV/Google Sheets/MySQL.
+  Goal: enough detail (e.g. "4th slide's filename, padding, background
+  color") to rebuild a page from the original site without opening the
+  original's editor. Whether this is genuinely useful is unproven --
+  the raw dumps in the current needs-review CSV are the cheap
+  experiment to find out.
+- **Keep the source multisite unmodified.** A corollary of the above:
+  the original multisite should be kept untouched (e.g. archived as-is)
+  so each page can always be re-inspected in its original
+  editor/theme/plugins while rebuilding pages on the destination. The
+  tools never modify the source, but the *process* should treat the
+  source as a reference archive until the rebuilt destination is
+  verified.
+- **"What needs rebuilding" workflow.** The needs-review report is the
+  source of truth for which pages/widgets/blocks need manual attention;
+  a future enhancement is a per-page review checklist (original site +
+  page, destination page, plugins most likely needing checking on that
+  page, and the raw data we have about each).
+
 ## 13. Remaining open items
 
 Small items I don't yet have a definitive answer for; I've noted the

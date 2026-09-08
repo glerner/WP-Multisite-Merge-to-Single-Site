@@ -17,7 +17,7 @@ final class FormPluginDetectorTest extends TestCase {
 	public function testDetectsKnownFormPluginSignatures( string $content, string $expectedLabel ): void {
 		$detector = new FormPluginDetector();
 
-		$post = new ScannedPost( 1, 1, 'page', 'publish', 'contact', $content, array() );
+		$post = new ScannedPost( 1, 1, 'page', 'publish', 'contact', 'Contact', $content, array() );
 
 		self::assertSame( array( $expectedLabel ), $detector->detect( $post ) );
 	}
@@ -47,7 +47,7 @@ final class FormPluginDetectorTest extends TestCase {
 
 		// e.g. HTML embed code pasted directly from Brevo's site, with
 		// no shortcode/block wrapper at all.
-		$post = new ScannedPost( 1, 1, 'page', 'publish', 'contact', '<form action="https://example.com/submit"><input type="email"></form>', array() );
+		$post = new ScannedPost( 1, 1, 'page', 'publish', 'contact', 'Contact', '<form action="https://example.com/submit"><input type="email"></form>', array() );
 
 		self::assertSame( array( 'Unidentified HTML form (pasted embed code, e.g. Brevo)' ), $detector->detect( $post ) );
 	}
@@ -58,7 +58,7 @@ final class FormPluginDetectorTest extends TestCase {
 		// Contact Form 7 itself renders a <form> tag, but since the
 		// shortcode already identifies it, the generic fallback must
 		// not also fire and duplicate/obscure that.
-		$post = new ScannedPost( 1, 1, 'page', 'publish', 'contact', '[contact-form-7 id="1"]<form></form>', array() );
+		$post = new ScannedPost( 1, 1, 'page', 'publish', 'contact', 'Contact', '[contact-form-7 id="1"]<form></form>', array() );
 
 		self::assertSame( array( 'Contact Form 7' ), $detector->detect( $post ) );
 	}
@@ -72,6 +72,7 @@ final class FormPluginDetectorTest extends TestCase {
 			'page',
 			'publish',
 			'contact',
+			'Contact',
 			'',
 			array( '_elementor_data' => array( '[{"widgetType":"form","settings":{}}]' ) )
 		);
@@ -82,7 +83,7 @@ final class FormPluginDetectorTest extends TestCase {
 	public function testReturnsEmptyArrayWhenNoFormFound(): void {
 		$detector = new FormPluginDetector();
 
-		$post = new ScannedPost( 1, 1, 'page', 'publish', 'about', '<p>No forms here.</p>', array() );
+		$post = new ScannedPost( 1, 1, 'page', 'publish', 'about', 'About', '<p>No forms here.</p>', array() );
 
 		self::assertSame( array(), $detector->detect( $post ) );
 	}
@@ -90,7 +91,7 @@ final class FormPluginDetectorTest extends TestCase {
 	public function testCanDetectMultipleFormPluginsOnOnePage(): void {
 		$detector = new FormPluginDetector();
 
-		$post = new ScannedPost( 1, 1, 'page', 'publish', 'contact', '[contact-form-7 id="1"] [wpforms id="2"]', array() );
+		$post = new ScannedPost( 1, 1, 'page', 'publish', 'contact', 'Contact', '[contact-form-7 id="1"] [wpforms id="2"]', array() );
 
 		self::assertSame( array( 'Contact Form 7', 'WPForms' ), $detector->detect( $post ) );
 	}

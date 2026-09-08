@@ -11,12 +11,17 @@
  *   php bin/multisite-integrity-checker.php --list-sites-php > config/sites.php
  *
  * Options:
- *   --strict         Exit non-zero on warnings too, not just errors.
- *   --config         Directory containing config.php/sites.php/etc. Defaults to ../config.
- *   --list-sites     Human-readable site list (blog_id, domain, included/deleted, title).
- *   --list-sites-php Ready-to-paste sites.php PHP source (see SitesPhpExporter) --
+ *   --strict          Exit non-zero on warnings too, not just errors.
+ *   --config          Directory containing config.php/sites.php/etc. Defaults to ../config.
+ *   --list-sites      Human-readable site list (blog_id, domain, included/deleted, title).
+ *   --list-sites-php  Ready-to-paste sites.php PHP source (see SitesPhpExporter) --
  *                     preserves any include/category overrides already in
  *                     sites.php, so re-running this after editing it is safe.
+ *   --include-deleted Also audit sites WordPress marks as deleted
+ *                     (wp_blogs.deleted = 1), so you can see what
+ *                     content they still hold before deciding whether
+ *                     to un-delete one. They are listed in the report
+ *                     like any other site; they are NEVER migrated.
  *
  * @package MergeMultisite
  */
@@ -28,6 +33,7 @@ require_once dirname( __DIR__ ) . '/vendor/autoload.php';
 use MergeMultisite\Audit\AuditFinding;
 use MergeMultisite\Audit\AuditRunner;
 use MergeMultisite\Audit\Checks\ContactPageDiscoveryCheck;
+use MergeMultisite\Audit\Checks\DivergentSiteOptionCheck;
 use MergeMultisite\Audit\Checks\MalwareIndicatorCheck;
 use MergeMultisite\Audit\Checks\MediaFileCheck;
 use MergeMultisite\Audit\Checks\MenuWidgetIntegrityCheck;
@@ -85,8 +91,17 @@ if ( $args->has( 'list-sites' ) ) {
 	exit( 0 );
 }
 
-$sites = $siteSelector->listIncludedSites( $config );
-$logger->info( sprintf( 'Running integrity checks against %d included site(s).', count( $sites ) ) );
+if ( $args->has( 'include-deleted' ) ) {
+	// All sites, deleted ones included. They remain marked
+	// deleted/included=false (so e.g. SitesPhpExporter would still
+	// omit them); this only affects what the AUDIT looks at, never
+	// what the migrator would write.
+	$sites = $siteSelector->listAllSites( $config );
+	$logger->info( sprintf( 'Running integrity checks against %d site(s), INCLUDING deleted ones.', count( $sites ) ) );
+} else {
+	$sites = $siteSelector->listIncludedSites( $config );
+	$logger->info( sprintf( 'Running integrity checks against %d included site(s).', count( $sites ) ) );
+}
 
 $runner = new AuditRunner(
 	array(
@@ -102,6 +117,7 @@ $runner = new AuditRunner(
 	new ContactPageDiscoveryCheck(),
 	new MalwareIndicatorCheck(),
 	new OrphanedMediaFileCheck(),
+	new DivergentSiteOptionCheck(),
 	),
 	$logger
 );

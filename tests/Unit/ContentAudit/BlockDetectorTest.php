@@ -40,6 +40,6 @@ final class BlockDetectorTest extends TestCase {
 	}
 
 	private function makePost( string $content ): ScannedPost {
-		return new ScannedPost( 1, 1, 'post', 'publish', 'my-post', $content, array() );
+		return new ScannedPost( 1, 1, 'post', 'publish', 'my-post', 'My Post', $content, array() );
 	}
 }
