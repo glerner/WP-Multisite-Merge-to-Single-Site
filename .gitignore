@@ -1,14 +1,63 @@
+# Dependencies
 /vendor/
+/node_modules/
+
+# Build artifacts
+/build/
+/dist/
+
+# IDE / editor
+/.vscode/
+/.idea/
+*.swp
+*.swo
+*~
+*.code-workspace
+# Dolphin file manager settings
+.directory
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Env files (do not commit secrets)
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+debug.log
+
+# PHP tooling
+composer.phar
+.phpunit.result.cache
+
+# Windsurf / Cascade workspace metadata
+.windsurf/
+.cascade/
+
+# Notes about upcoming changes, plan
+git-diff.txt
+junk.txt
+changes.txt
+changes.md
+bug-report.txt
+
+# Generated CSS artifacts
+*.generated.css
+
+# Misc
+commit-message.txt
+
+# Repository config files (don't commit these)
+/config/config.php
+/config/sites.php
+/config/option-keys.php
+/config/term-overrides.php
 /var/logs/*
 /var/reports/*
 /var/state/*
 !/var/logs/.gitkeep
 !/var/reports/.gitkeep
 !/var/state/.gitkeep
-
-/config/config.php
-/config/sites.php
-/config/option-keys.php
-/config/term-overrides.php
-
-.phpunit.result.cache

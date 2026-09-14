@@ -24,6 +24,10 @@ final class PodsDetectionCheck implements AuditCheckInterface {
 		return 'pods-detection';
 	}
 
+	public function description(): string {
+		return 'Whether the Pods plugin is in use or left custom tables behind; a dedicated migrator adapter is only needed if Pods content is actually used.';
+	}
+
 	public function run( Connection $source, MergeConfig $config, array $sites ): array {
 		$findings = array();
 
@@ -48,7 +52,7 @@ final class PodsDetectionCheck implements AuditCheckInterface {
 			$findings[] = AuditFinding::warning(
 				$this->name(),
 				sprintf(
-					'Found %d Pods-related custom table(s) (e.g. %s). These are likely leftovers from a time when the Pods plugin was network-enabled, not proof it is still in use. A dedicated PodsAdapter migrator is only needed if any site actually still uses Pods content. Full list in the JSON report.',
+					'%d Pods-related custom table(s) (%s) -- likely leftover, not proof Pods is in use. Full list in JSON.',
 					count( $tableNames ),
 					implode( ', ', array_map( static fn ( string $t ): string => '"' . $t . '"', $sample ) )
 				),
@@ -66,7 +70,7 @@ final class PodsDetectionCheck implements AuditCheckInterface {
 			if ( $count > 0 ) {
 				$findings[] = AuditFinding::info(
 					$this->name(),
-					sprintf( 'Site %d has %d Pods-related option row(s) -- Pods appears to be configured there.', $site->blogId, $count ),
+					sprintf( 'Site %d: %d "pods*" option row(s) -- Pods appears configured there.', $site->blogId, $count ),
 					array(
 					'blog_id' => $site->blogId,
 					'count' => $count,

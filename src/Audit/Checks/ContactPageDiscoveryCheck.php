@@ -24,6 +24,10 @@ final class ContactPageDiscoveryCheck implements AuditCheckInterface {
 		return 'contact-page-discovery';
 	}
 
+	public function description(): string {
+		return 'Contact-like page slugs found vs. the contact_page_paths canonicalization list in config.php.';
+	}
+
 	public function run( Connection $source, MergeConfig $config, array $sites ): array {
 		$findings = array();
 		$knownPaths = array_map( static fn ( string $p ): string => trim( $p, '/' ), $config->contactPagePaths );
@@ -44,11 +48,11 @@ final class ContactPageDiscoveryCheck implements AuditCheckInterface {
 				$findings[] = AuditFinding::info(
 					$this->name(),
 					sprintf(
-						'Site %d has a contact-like page "/%s/" (post %d)%s.',
+						'Site %d, Post %d "/%s/" -- %s.',
 						$site->blogId,
-						$slug,
 						(int) $row['ID'],
-						$isKnown ? ' (already in contact_page_paths)' : ' -- NOT in contact_page_paths, consider adding it'
+						$slug,
+						$isKnown ? 'already in contact_page_paths' : 'NOT in contact_page_paths; consider adding it'
 					),
 					array(
 					'blog_id' => $site->blogId,

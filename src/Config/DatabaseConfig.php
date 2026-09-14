@@ -13,24 +13,30 @@ namespace MergeMultisite\Config;
 final class DatabaseConfig {
 
 	/**
-	 * @param string   $host         Database host name or IP address.
-	 * @param int      $port         Database port.
-	 * @param string   $database     Database (schema) name.
-	 * @param string   $username     Database username.
-	 * @param string   $password     Database password.
-	 * @param string   $charset      Connection charset, e.g. "utf8mb4".
-	 * @param string   $tablePrefix  Base WordPress table prefix, e.g. "wp_" or "wp3_".
-	 *                               This is never assumed to be "wp_" -- it always
-	 *                               comes from configuration.
-	 * @param string   $uploadsPath  Absolute filesystem path to this site's
-	 *                               wp-content/uploads directory.
-	 * @param int|null $adminUserId  For the destination only: the user_id of the
-	 *                               admin user already created there, which the
-	 *                               migrator must never touch or duplicate.
+	 * @param string      $host        Database host name or IP address.
+	 * @param int         $port        Database port.
+	 * @param string|null $socket      Unix socket path; when set it takes
+	 *                                 precedence over host/port (e.g. a site
+	 *                                 running under Local by Flywheel).
+	 * @param string      $database    Database (schema) name.
+	 * @param string      $username    Database username.
+	 * @param string      $password    Database password.
+	 * @param string      $charset     Connection charset, e.g. "utf8mb4".
+	 * @param string      $tablePrefix Base WordPress table prefix, e.g. "wp_" or "wp3_".
+	 *                                 This is never assumed to be "wp_" -- it always
+	 *                                 comes from configuration.
+	 * @param string      $uploadsPath Absolute filesystem path to this site's
+	 *                                 wp-content/uploads directory.
+	 * @param int|null    $adminUserId For the destination only: the user_id of the
+	 *                                 admin user already created there, which the
+	 *                                 migrator must never touch or duplicate.
+	 * @param string      $label       Human-readable label used in error messages,
+	 *                                 e.g. "source" or "destination".
 	 */
 	public function __construct(
 		public readonly string $host,
 		public readonly int $port,
+		public readonly ?string $socket,
 		public readonly string $database,
 		public readonly string $username,
 		public readonly string $password,
@@ -38,6 +44,7 @@ final class DatabaseConfig {
 		public readonly string $tablePrefix,
 		public readonly string $uploadsPath,
 		public readonly ?int $adminUserId = null,
+		public readonly string $label = 'database',
 	) {
 	}
 
@@ -60,8 +67,9 @@ final class DatabaseConfig {
 		}
 
 		return new self(
-			host: (string) $data['host'],
+			host: (string) ( $data['host'] ?? 'localhost' ),
 			port: (int) ( $data['port'] ?? 3306 ),
+			socket: isset( $data['unix_socket'] ) ? (string) $data['unix_socket'] : null,
 			database: (string) $data['database'],
 			username: (string) $data['username'],
 			password: (string) ( $data['password'] ?? '' ),
@@ -69,6 +77,7 @@ final class DatabaseConfig {
 			tablePrefix: (string) $data['table_prefix'],
 			uploadsPath: (string) $data['uploads_path'],
 			adminUserId: isset( $data['admin_user_id'] ) ? (int) $data['admin_user_id'] : null,
+			label: $label,
 		);
 	}
 

@@ -53,6 +53,10 @@ final class OrphanedMediaFileCheck implements AuditCheckInterface {
 		return 'orphaned-media-files';
 	}
 
+	public function description(): string {
+		return 'Files on disk under uploads with no attachment record -- often harmless (old thumbnails, plugin caches, FTP\'d files); migration leaves them behind.';
+	}
+
 	public function run( Connection $source, MergeConfig $config, array $sites ): array {
 		$resolver = new UploadsPathResolver( $config->source->uploadsPath );
 		$findings = array();
@@ -83,7 +87,7 @@ final class OrphanedMediaFileCheck implements AuditCheckInterface {
 			$findings[] = AuditFinding::info(
 				$this->name(),
 				sprintf(
-					'Site %d has %d file(s) on disk under uploads with no matching attachment in the database: %s. Often harmless (old thumbnail sizes, plugin-generated cache files, or files FTP\'d in directly), but worth a look -- migration only copies files that have an attachment record, so these are otherwise left behind. Full list in the JSON report.',
+					'Site %d: %d file(s) with no attachment record: %s. Full list in JSON.',
 					$site->blogId,
 					count( $orphaned ),
 					$summary

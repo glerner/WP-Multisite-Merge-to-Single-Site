@@ -1,6 +1,8 @@
 # WordPress Multisite → Single Site Merge: Project Plan
 
-Status: **DRAFT v2 — awaiting your approval before any code is written.**
+Status: **Phases 0–1 built and in active use** (integrity checker runs
+against the real source DB; 118 PHPUnit tests, PHPCS + PHPStan clean).
+`site-audit.php` (Phase 2) also exists.
 
 Location: `~/sites/merge-multisite` (standalone project).
 
@@ -165,6 +167,20 @@ one instead.
   (default: most-used-wins, overridable), post-type/post-status
   include/exclude lists (see §7.1 open item, now resolved with
   defaults + override).
+- **`connection` endpoint drivers** (implemented): each side's `host`/
+  `port` can be a fixed value or a driver spec — `'lando'` (reads the
+  current mapped port out of `lando info`, survives Lando restarts
+  that remap host ports) or `'local'` (Local by Flywheel `sites.json` /
+  unix socket). Connection failures get a troubleshooting message, not
+  a bare PDO fatal.
+- **`suppressions`** (implemented): array of rules hiding audit
+  findings — `['check' => '<name-or-prefix*>', ...context criteria]`.
+  A suppressed-count line keeps it from being fully silent.
+- **`media_search_paths`** (implemented): extra directories searched
+  recursively (by filename, preferring path-suffix matches) for
+  attachment files the checker finds missing; matches become a
+  reviewable bash copy script (`var/reports/copy-missing-media-*.sh`)
+  restoring them into the source uploads tree.
 
 ### 4.2 `sites.php` (your site selection)
 - Explicit array of subsites, **one entry per site**, each with
@@ -280,6 +296,16 @@ fixing the byte-length prefixes PHP's serialization format requires
   attachment parents) rewritten via IdMap after all posts in a batch are
   inserted (two-pass: insert then fix `post_parent`, since WP doesn't
   guarantee parents are processed before children in ID order).
+- **Plugin-owned custom post types need no adapter** — they migrate
+  through the normal post pipeline as long as the type isn't in
+  `excluded_post_types`. The only requirement is that the type is
+  *registered* on the destination (install the plugin, or a small
+  must-use stub registration) or the rows are invisible in wp-admin.
+  Meta values containing other post IDs are remapped via IdMap like
+  any other reference. Concretely confirmed: **Flamingo** — source has
+  56 `flamingo_contact` posts (address-book entries, sites
+  1/20/49/58/65) and zero `flamingo_inbound` submissions; keeping it =
+  keep the post type included + Flamingo installed on destination.
 - **Contact page normalization**: a configurable list of known contact
   page slugs/paths across sites (e.g. `/contact/`, `/contact-me/`,
   and any others discovered during audit) is treated as one logical
@@ -471,6 +497,16 @@ provided across your sites/clients:
     generic-options entry where it's a simple settings array, and be
     listed as "no adapter yet" in the report otherwise — nothing
     migrates silently without appearing in a report first.
+  - **Decided so far against the real DB**: `akismet` → include
+    (`akismet_*`). `flamingo` → keep its `flamingo_contact` CPT (§7.1);
+    no `flamingo_inbound` submissions exist. `ai-engine`, `gl-reinvent`,
+    `greenshift-*`, `instant-images`, `mailin`, `media-library-assistant`,
+    `media-sync`, `optimization-detective`, `phoenix-media-rename`,
+    `regenerate-thumbnails`, `safe-svg`, `wp-graphql`, `wpwm-cfce-plugin`,
+    `wpwm-theme-variation-display` → verified **no data anywhere**
+    (options/postmeta/posts/tables all empty); suppressed in config
+    rather than given exclude rules since there is simply nothing to
+    migrate. `000-prime-mover-constants` → exclude.
   - Your two custom plugins (`gl-block-bad-logins`,
     `gl-debug-mode-only-you.php`) are **ignored completely**, per your
     instruction — not even reported.
@@ -613,6 +649,37 @@ checks). Checks include:
 - Contact-page slug variants discovered (feeds the `/contact/`
   canonicalization list in §7.1, so you can confirm the list before
   migrating).
+- Divergent site-wide options (same option name, different values across
+  subsites) — the merged site keeps one value per option (unknown which
+  one will be kept).
+
+**Report conventions** (implemented, after an audit-noise reduction pass):
+
+- Every `### <check>` section opens with a one-line `description()`
+  from the check class, so individual finding lines stay terse —
+  `Site N, Post X "title" (post_type) field=value -- assessment` for
+  post findings, `"option": "v1", "v2"` or site-grouped value lines for
+  divergent options, `Site N, Option "x" ...` for option findings.
+- `suppressions` in `config.php` filters findings centrally in
+  `AuditRunner` by check name (prefix `*` allowed) + context match;
+  one `audit.suppressed` line reports the hidden count.
+- `excluded_post_types` is respected by the post checks, not just the
+  migrator.
+- Plugin section output: per-plugin `no-rule` warnings stay one line
+  each; a `plugin-data.undecided` finding lists paste-ready rules
+  grouped by intent — `include` lines only where option rows were
+  actually detected (prefix pre-filled from the slug's common
+  spellings, with a `// found:` comment), a "data lives elsewhere"
+  block probing postmeta keys / post types / custom tables, then
+  `exclude` lines and `suppressions` lines. `mode => 'exclude'` in
+  option-keys.php means "decided: never migrate, don't report."
+- Orphaned plugin data is one Markdown table (plugin rule(s) |
+  pattern | site | rows | unique names); rules sharing an option
+  pattern merge into one row.
+- Missing attachment files are searched for under
+  `media_search_paths`; results become `copy-missing-media-*.sh`
+  (`install -D` commands into the source tree, `# NOT FOUND:` comments
+  for the rest — review before running).
 
 Output: a Markdown report (human-readable, safe to read top-to-bottom)
 plus a JSON version (for scripting/diffing between runs) in
@@ -677,14 +744,18 @@ blocking issues are found; `--strict` flag to also fail on warnings.
 
 1. **Phase 0** — scaffolding: composer.json, phpcs/phpstan config,
    directory layout, config loading, DB connection wrappers, logging,
-   CLI arg parsing. (This plan's approval unlocks this phase.)
+   CLI arg parsing. ✅ Done — incl. dynamic endpoint drivers
+   (static/lando/local) so Lando port remaps stop breaking runs.
 2. **Phase 1** — `multisite-integrity-checker.php` fully working
    end-to-end against your real source DB (read-only, safe to run
    immediately, gives us real data to validate every later assumption
-   against).
+   against). ✅ Done and in active use — all 13 checks plus the
+   report-noise machinery (§9 conventions); 15 errors / ~112 warnings
+   on the current real data, all categorized and actionable.
 3. **Phase 2** — `site-audit.php` (independent of the migration
    pipeline; also safe to run immediately, and useful on its own for
-   your plugin-consolidation decisions).
+   your plugin-consolidation decisions). Built; hardening/report polish
+   is the natural next candidate before Phase 3+.
 4. **Phase 3** — Users + Terms migrators (+ term-merge report).
 5. **Phase 4** — Media migrator (filesystem copy/dedup/rename,
    `--move-media-only`).
@@ -749,8 +820,10 @@ default I'll build if you don't weigh in further:
 2. Exact destination `destination_url` value and destination admin
    user ID/login (needed once we actually configure `config.php` — not
    needed to start Phase 0/1/2).
-3. Whether Pods is actually in use anywhere (§7.5) — the integrity
-   checker will tell us definitively; no action needed from you now.
+3. Whether Pods is actually in use anywhere (§7.5) — the checker's
+   `pods-detection` section now reports Pods-related tables/options on
+   the real data (10 findings in the latest run); review that section
+   to decide whether a `PodsAdapter` is warranted.
 4. Any additional contact-form-page slugs beyond `/contact/` and
    `/contact-me/` you already know about, so the canonicalization list
    is complete before Phase 5 — otherwise `site-audit.php` (Phase 2)
@@ -770,6 +843,5 @@ default I'll build if you don't weigh in further:
 
 ---
 
-**Next step:** scaffolding Phase 0 + Phase 1 (integrity checker) +
-Phase 2 (`site-audit.php`) now — both are read-only, safe to run
-immediately against your real multisite.
+**Next step:** Phase 3 (Users + Terms migrators) — the read-only audit
+tooling (Phases 0–2) is built and verified against the real source DB.

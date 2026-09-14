@@ -15,11 +15,14 @@ use MergeMultisite\Audit\AuditFinding;
 final class AuditReportWriter {
 
 	/**
-	 * @param AuditFinding[] $findings
+	 * @param AuditFinding[]       $findings
+	 * @param array<string,string> $checkDescriptions check name => one-line
+	 *                                description, printed once under each
+	 *                                section heading.
 	 *
 	 * @return array{markdown: string, json: string} Absolute paths of the two files written.
 	 */
-	public function write( array $findings, string $outputDirectory, string $baseName ): array {
+	public function write( array $findings, string $outputDirectory, string $baseName, array $checkDescriptions = array() ): array {
 		if ( ! is_dir( $outputDirectory ) ) {
 			mkdir( $outputDirectory, 0775, true );
 		}
@@ -27,7 +30,7 @@ final class AuditReportWriter {
 		$markdownPath = $outputDirectory . '/' . $baseName . '.md';
 		$jsonPath = $outputDirectory . '/' . $baseName . '.json';
 
-		file_put_contents( $markdownPath, $this->toMarkdown( $findings ) );
+		file_put_contents( $markdownPath, $this->toMarkdown( $findings, $checkDescriptions ) );
 		file_put_contents( $jsonPath, $this->toJson( $findings ) );
 
 		return array(
@@ -50,9 +53,10 @@ final class AuditReportWriter {
 	}
 
 	/**
-	 * @param AuditFinding[] $findings
+	 * @param AuditFinding[]       $findings
+	 * @param array<string,string> $checkDescriptions
 	 */
-	public function toMarkdown( array $findings ): string {
+	public function toMarkdown( array $findings, array $checkDescriptions = array() ): string {
 		$summary = $this->summarize( $findings );
 
 		$lines = array();
@@ -86,6 +90,18 @@ final class AuditReportWriter {
 			foreach ( $byCheck as $checkName => $checkFindings ) {
 				$lines[] = sprintf( '### %s', $checkName );
 				$lines[] = '';
+
+				// Findings are often named "<check>.<subcode>"; the
+				// description is registered under the base check name.
+				$baseName = strstr( $checkName, '.', true );
+				$description = $checkDescriptions[ $checkName ]
+					?? $checkDescriptions[ $baseName === false ? $checkName : $baseName ]
+					?? null;
+				if ( $description !== null ) {
+					$lines[] = $description;
+					$lines[] = '';
+				}
+
 				foreach ( $checkFindings as $finding ) {
 					$lines[] = '- ' . $finding->message;
 				}

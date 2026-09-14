@@ -24,6 +24,10 @@ final class UserConflictCheck implements AuditCheckInterface {
 		return 'user-conflict';
 	}
 
+	public function description(): string {
+		return 'users-table rows that share a login or email -- not supposed to happen in one network.';
+	}
+
 	public function run( Connection $source, MergeConfig $config, array $sites ): array {
 		$usersTable = $source->networkTable( 'users' );
 
@@ -64,7 +68,7 @@ final class UserConflictCheck implements AuditCheckInterface {
 			$findings[] = AuditFinding::warning(
 				$this->name(),
 				sprintf(
-					'Email "%s" is shared by %d users with different logins (%s) -- likely the same person under different accounts; review manually.',
+					'Email "%s" shared by %d users, logins: %s -- likely the same person under different accounts; review.',
 					$email,
 					count( $group ),
 					implode( ', ', $logins )
@@ -105,7 +109,7 @@ final class UserConflictCheck implements AuditCheckInterface {
 			$findings[] = AuditFinding::error(
 				$this->name(),
 				sprintf(
-					'Login "%s" is shared by %d users with different emails (%s) -- WordPress should never allow this in one network; the source data needs manual attention before migrating.',
+					'Login "%s" shared by %d users, emails: %s -- invalid in one network; fix before migrating.',
 					$login,
 					count( $group ),
 					implode( ', ', $emails )

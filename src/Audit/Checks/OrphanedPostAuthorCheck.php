@@ -21,9 +21,22 @@ final class OrphanedPostAuthorCheck implements AuditCheckInterface {
 		return 'orphaned-post-author';
 	}
 
+	public function description(): string {
+		return 'Posts whose post_author matches no user. post_author=0 is normal for system-created content (Navigation pages, plugin placeholders).';
+	}
+
 	public function run( Connection $source, MergeConfig $config, array $sites ): array {
 		$findings = array();
 		$usersTable = $source->networkTable( 'users' );
+
+		$typeExclusion = '';
+		$typeParams = array();
+		if ( $config->excludedPostTypes !== array() ) {
+			$typeExclusion = ' AND p.post_type NOT IN ('
+				. implode( ', ', array_fill( 0, count( $config->excludedPostTypes ), '?' ) )
+				. ')';
+			$typeParams = $config->excludedPostTypes;
+		}
 
 		foreach ( $sites as $site ) {
 			$postsTable = $source->siteTable( 'posts', $site->blogId );
@@ -32,7 +45,8 @@ final class OrphanedPostAuthorCheck implements AuditCheckInterface {
 				"SELECT p.ID, p.post_title, p.post_type, p.post_author
                  FROM {$postsTable} p
                  LEFT JOIN {$usersTable} u ON u.ID = p.post_author
-                 WHERE u.ID IS NULL"
+                 WHERE u.ID IS NULL{$typeExclusion}",
+				$typeParams
 			);
 
 			foreach ( $rows as $row ) {
@@ -48,14 +62,16 @@ final class OrphanedPostAuthorCheck implements AuditCheckInterface {
 					$findings[] = AuditFinding::info(
 						$this->name() . '.no-author',
 						sprintf(
-							'Post %d ("%s", site %d) has post_author=0 (no author). Normal for system-created content (Navigation pages, plugin placeholders); only worth a closer look if it is neither.',
+							'Site %d, Post %d "%s" (%s) post_author=0 -- normal for system-created content.',
+							$site->blogId,
 							(int) $row['ID'],
 							(string) $row['post_title'],
-							$site->blogId
+							(string) $row['post_type']
 						),
 						array(
 							'blog_id' => $site->blogId,
 							'post_id' => (int) $row['ID'],
+							'post_type' => (string) $row['post_type'],
 							'post_author' => 0,
 						)
 					);
@@ -65,15 +81,17 @@ final class OrphanedPostAuthorCheck implements AuditCheckInterface {
 				$findings[] = AuditFinding::error(
 					$this->name(),
 					sprintf(
-						'Post %d ("%s", site %d) has post_author=%d, which does not exist.',
+						'Site %d, Post %d "%s" (%s) post_author=%d -- author does not exist.',
+						$site->blogId,
 						(int) $row['ID'],
 						(string) $row['post_title'],
-						$site->blogId,
+						(string) $row['post_type'],
 						$postAuthor
 					),
 					array(
 					'blog_id' => $site->blogId,
 					'post_id' => (int) $row['ID'],
+					'post_type' => (string) $row['post_type'],
 					'post_author' => $postAuthor,
 					)
 				);

@@ -22,8 +22,33 @@ return [
      * every site except the main site (blog_id 1), which uses the bare
      * `{table_prefix}posts`. Never hardcode `wp_` — always read this
      * value from config.
+     *
+     * `connection` controls how the host/port/socket are determined:
+     *
+     *   'static' (default): use the literal 'host'/'port' below.
+     *
+     *   'lando': ask Lando for the database container's current
+     *   published port -- it changes every time the container is
+     *   recreated, so a hardcoded port goes stale. Options:
+     *       'service'      Lando service name (default "database")
+     *       'project_path' dir containing .lando.yml (default: found
+     *                      by walking up from 'uploads_path')
+     *       'lando_binary' path to the lando CLI if not on PATH
+     *
+     *   'local': a site running under Local by Flywheel. On
+     *   macOS/Linux it connects over a unix socket that only exists
+     *   while the site is running. Options:
+     *       'site'       the site's name in Local, OR
+     *       'site_path'  e.g. "~/Local Sites/mysite"
+     *       'sites_json' path to Local's sites.json (if nonstandard)
+     *
+     *   Custom: set 'driver' to the class name of your own
+     *   MergeMultisite\Config\Endpoint\EndpointResolverInterface
+     *   implementation (this file is plain PHP -- `require` the class
+     *   file above the return statement first).
      */
     'source'      => [
+        'connection'    => 'static',
         'host'          => '127.0.0.1',
         'port'          => 3306,
         'database'      => 'source_multisite',
@@ -80,8 +105,36 @@ return [
      */
     'batch_size' => 200,
 
-    // Post types always excluded, regardless of the allow/deny lists below.
+    // Post types always excluded, regardless of the allow/deny lists
+    // below. Also respected by the audit checks (they aren't reported).
     'excluded_post_types' => ['revision'],
+
+    /*
+     * Audit finding suppressions. Each rule hides findings whose check
+     * name matches "check" (trailing "*" = prefix) AND whose context
+     * equals every other key listed. Examples:
+     *
+     *   ['check' => 'orphaned-post-author.no-author'],
+     *   ['check' => 'plugin-data.*'],
+     *   ['check' => 'plugin-data.orphaned-data', 'plugin' => 'woocommerce'],
+     *   ['check' => 'media-files.missing-file', 'blog_id' => 26],
+     *
+     * A suppressed count is still reported (one line), so filtering is
+     * never fully silent.
+     */
+    'suppressions' => [
+        // ['check' => 'orphaned-post-author.no-author'],
+    ],
+
+    /*
+     * Directories searched (recursively, by filename) when the audit
+     * finds attachment files missing from the source uploads. Matches
+     * are turned into a reviewable bash copy script written next to the
+     * report (var/reports/copy-missing-media-*.sh).
+     */
+    'media_search_paths' => [
+        // '~/old-sites',
+    ],
 
     // Post statuses always excluded.
     'excluded_post_statuses' => ['auto-draft'],

@@ -27,6 +27,16 @@ final class MergeConfig {
 	 * @param array<string, PluginOptionRule>      $pluginOptionRules Plugin option-migration rules, keyed by plugin slug.
 	 * @param array<string, array<string, string>> $termOverrides Manual term-label overrides, by taxonomy.
 	 * @param string|null                          $wpscanApiToken Optional API token for bin/run-wpscan.php.
+	 * @param array<int, array<string, mixed>>     $suppressions    Finding-suppression rules applied by
+	 *                                                              AuditRunner after all checks run:
+	 *                                                              each rule is an array with a "check"
+	 *                                                              key (finding name, or prefix when it
+	 *                                                              ends with "*") plus optional context
+	 *                                                              key/value criteria, e.g.
+	 *                                                              ['check' => 'plugin-data.*', 'plugin' => 'x'].
+	 * @param string[]                             $mediaSearchPaths Extra directories searched for files
+	 *                                                              missing from uploads, so a copy
+	 *                                                              script can be generated for them.
 	 */
 	public function __construct(
 		public readonly DatabaseConfig $source,
@@ -43,6 +53,8 @@ final class MergeConfig {
 		public readonly array $pluginOptionRules,
 		public readonly array $termOverrides,
 		public readonly ?string $wpscanApiToken = null,
+		public readonly array $suppressions = array(),
+		public readonly array $mediaSearchPaths = array(),
 	) {
 	}
 

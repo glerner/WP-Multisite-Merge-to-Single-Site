@@ -52,6 +52,13 @@ final class AuditRunner {
 			$findings = array( ...$findings, ...$checkFindings );
 		}
 
-		return $findings;
+		$filtered = SuppressionFilter::apply( $findings, $config->suppressions );
+		if ( count( $filtered ) !== count( $findings ) ) {
+			$this->logger->info(
+				sprintf( '%d finding(s) suppressed by config.php "suppressions" rules.', count( $findings ) - count( $filtered ) )
+			);
+		}
+
+		return $filtered;
 	}
 }

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace MergeMultisite\Config;
 
+use MergeMultisite\Config\Endpoint\EndpointResolvers;
+
 /**
  * Loads and validates `config.php`, `sites.php`, `option-keys.php`, and
  * `term-overrides.php` from the project's `config/` directory, producing
@@ -39,8 +41,8 @@ final class ConfigLoader {
 			throw new ConfigException( 'config.php is missing "destination_url".' );
 		}
 
-		$source = DatabaseConfig::fromArray( $config['source'], 'source' );
-		$destination = DatabaseConfig::fromArray( $config['destination'], 'destination' );
+		$source = DatabaseConfig::fromArray( $this->resolveConnection( $config['source'], 'source' ), 'source' );
+		$destination = DatabaseConfig::fromArray( $this->resolveConnection( $config['destination'], 'destination' ), 'destination' );
 
 		$sites = array();
 		foreach ( $this->optionalArrayFile( 'sites.php' ) as $entry ) {
@@ -71,7 +73,66 @@ final class ConfigLoader {
 			pluginOptionRules: $pluginOptionRules,
 			termOverrides: $termOverrides,
 			wpscanApiToken: isset( $config['wpscan_api_token'] ) ? (string) $config['wpscan_api_token'] : null,
+			suppressions: array_values(
+				array_filter(
+					array_map(
+						static fn ( $rule ): array => is_array( $rule ) ? $rule : array( 'check' => (string) $rule ),
+						is_array( $config['suppressions'] ?? null ) ? $config['suppressions'] : array()
+					)
+				)
+			),
+			mediaSearchPaths: array_map(
+				fn ( string $path ): string => $this->expandHome( $path ),
+				array_map( 'strval', is_array( $config['media_search_paths'] ?? null ) ? $config['media_search_paths'] : array() )
+			),
 		);
+	}
+
+	/**
+	 * Apply the "connection" spec of a database section, replacing its
+	 * "host"/"port"/"unix_socket" with whatever the configured resolver
+	 * (static, lando, local, ...) produces. Defaults to "static", so a
+	 * section without a "connection" key behaves exactly as before.
+	 *
+	 * @param array<string, mixed> $dbSection
+	 *
+	 * @return array<string, mixed>
+	 *
+	 * @throws ConfigException When the endpoint cannot be resolved.
+	 */
+	private function resolveConnection( array $dbSection, string $label ): array {
+		$spec = $dbSection['connection'] ?? 'static';
+		if ( is_string( $spec ) ) {
+			$spec = array( 'driver' => $spec );
+		}
+		if ( ! is_array( $spec ) ) {
+			throw new ConfigException(
+				sprintf( '"connection" for the "%s" database must be a driver name or an array.', $label )
+			);
+		}
+
+		try {
+			$endpoint = EndpointResolvers::forDriver( (string) ( $spec['driver'] ?? 'static' ) )
+				->resolve( $spec, $dbSection );
+		} catch ( ConfigException $exception ) {
+			throw new ConfigException( sprintf( '[%s] %s', $label, $exception->getMessage() ), 0, $exception );
+		}
+
+		$dbSection['host'] = $endpoint->host;
+		$dbSection['port'] = $endpoint->port;
+		if ( $endpoint->socket !== null ) {
+			$dbSection['unix_socket'] = $endpoint->socket;
+		}
+
+		return $dbSection;
+	}
+
+	private function expandHome( string $path ): string {
+		if ( str_starts_with( $path, '~/' ) ) {
+			$homeEnv = getenv( 'HOME' );
+			return ( $homeEnv === false ? '' : $homeEnv ) . substr( $path, 1 );
+		}
+		return $path;
 	}
 
 	/**

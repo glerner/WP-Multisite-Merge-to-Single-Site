@@ -116,6 +116,10 @@ final class DivergentSiteOptionCheck implements AuditCheckInterface {
 		return 'divergent-site-options';
 	}
 
+	public function description(): string {
+		return 'Site-wide options whose value differs across subsites; the merged site keeps ONE value per option -- pick the canonical one. Expected per-site values (siteurl, blogname, ...) are already filtered out.';
+	}
+
 	public function run( Connection $source, MergeConfig $config, array $sites ): array {
 		// Per-site option rows, keyed by option_name.
 		$valuesByOption = array();
@@ -130,12 +134,12 @@ final class DivergentSiteOptionCheck implements AuditCheckInterface {
 			}
 		}
 
-		$findings = array();
-		foreach ( $valuesByOption as $optionName => $sitesByValue ) {
-			if ( count( $findings ) >= self::MAX_FINDINGS ) {
-				break;
-			}
+		// Collect divergent options first so the report can both show
+		// them (up to MAX_FINDINGS) and say how many were left out.
+		/** @var array<string, array<string, int[]>> $divergent option name => raw value => blog_ids */
+		$divergent = array();
 
+		foreach ( $valuesByOption as $optionName => $sitesByValue ) {
 			if ( in_array( $optionName, self::EXCLUDED_OPTION_NAMES, true ) ) {
 				continue;
 			}
@@ -182,37 +186,21 @@ final class DivergentSiteOptionCheck implements AuditCheckInterface {
 				continue; // Same value everywhere -- not a conflict.
 			}
 
-			$summary = array();
-			foreach ( $valueGroups as $value => $blogIds ) {
-				// PHP converts numeric-looking string keys to int
-				// automatically, so re-cast here to keep string
-				// handling (strlen/truncation) type-safe.
-				$value = (string) $value;
+			$divergent[ $optionName ] = $valueGroups;
+		}
 
-				sort( $blogIds );
-				$sitesShown = array_slice( $blogIds, 0, self::MAX_SITES_PER_VALUE );
-				$siteList = implode( ', ', array_map( static fn ( int $id ): string => 'site ' . $id, $sitesShown ) );
-				if ( count( $blogIds ) > self::MAX_SITES_PER_VALUE ) {
-					$siteList .= sprintf( ' (and %d more)', count( $blogIds ) - self::MAX_SITES_PER_VALUE );
-				}
+		ksort( $divergent );
 
-				$displayValue = strlen( $value ) > 80 ? substr( $value, 0, 77 ) . '...' : $value;
-				$summary[] = sprintf( 'value "%s" on %s', $displayValue, $siteList );
-			}
-
+		$findings = array();
+		foreach ( array_slice( $divergent, 0, self::MAX_FINDINGS, true ) as $optionName => $valueGroups ) {
 			$findings[] = AuditFinding::warning(
 				$this->name(),
-				sprintf(
-					'Site-wide option "%s" has %d different value(s) across subsites (%s) -- the merged site has one options table, so a canonical value must be chosen; review before/after migration.',
-					$optionName,
-					count( $valueGroups ),
-					implode( '; ', $summary )
-				),
+				$this->optionMessage( $optionName, $valueGroups ),
 				array(
 					'option_name' => $optionName,
 					'groups' => array_map(
-						static fn ( string $value, array $blogIds ): array => array(
-							'value' => $value,
+						static fn ( $value, array $blogIds ): array => array(
+							'value' => (string) $value,
 							'sites' => $blogIds,
 						),
 						array_keys( $valueGroups ),
@@ -222,6 +210,56 @@ final class DivergentSiteOptionCheck implements AuditCheckInterface {
 			);
 		}
 
+		$remaining = count( $divergent ) - self::MAX_FINDINGS;
+		if ( $remaining > 0 ) {
+			$findings[] = AuditFinding::info(
+				$this->name() . '.truncated',
+				sprintf( '%d more divergent option name(s) not shown: %s', $remaining, implode( ', ', array_slice( array_keys( $divergent ), self::MAX_FINDINGS ) ) )
+			);
+		}
+
 		return $findings;
+	}
+
+	/**
+	 * Few distinct values render inline ("name": "a", "b"); many get
+	 * one line per value with the sites holding it.
+	 *
+	 * @param array<string, int[]> $valueGroups
+	 */
+	private function optionMessage( string $optionName, array $valueGroups ): string {
+		// Array keys are ints when a value looks numeric ("1"), so cast
+		// every key back to string before string handling.
+		$quotedValues = array();
+		foreach ( $valueGroups as $value => $blogIds ) {
+			$quotedValues[ (string) $value ] = $blogIds;
+		}
+		ksort( $quotedValues );
+		$valueGroups = $quotedValues;
+
+		if ( count( $valueGroups ) <= 3 ) {
+			$quotedValues = array_map(
+				static fn ( string $v ): string => '"' . self::truncate( $v ) . '"',
+				array_keys( $valueGroups )
+			);
+
+			return sprintf( '"%s": %s', $optionName, implode( ', ', $quotedValues ) );
+		}
+
+		$lines = array( sprintf( '"%s":', $optionName ) );
+		foreach ( $valueGroups as $value => $blogIds ) {
+			sort( $blogIds );
+			$siteList = implode( ', ', array_slice( $blogIds, 0, self::MAX_SITES_PER_VALUE ) );
+			if ( count( $blogIds ) > self::MAX_SITES_PER_VALUE ) {
+				$siteList .= sprintf( ' (+%d more)', count( $blogIds ) - self::MAX_SITES_PER_VALUE );
+			}
+			$lines[] = sprintf( '  sites %s: "%s"', $siteList, self::truncate( (string) $value ) );
+		}
+
+		return implode( "\n", $lines );
+	}
+
+	private static function truncate( string $value ): string {
+		return strlen( $value ) > 80 ? substr( $value, 0, 77 ) . '...' : $value;
 	}
 }

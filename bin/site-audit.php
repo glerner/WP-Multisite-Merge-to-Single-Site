@@ -46,6 +46,7 @@ use MergeMultisite\ContentAudit\Detectors\ShortcodeDetector;
 use MergeMultisite\ContentAudit\Detectors\VideoEmbedDetector;
 use MergeMultisite\ContentAudit\PostScanner;
 use MergeMultisite\Db\Connection;
+use MergeMultisite\Db\ConnectionException;
 use MergeMultisite\Migration\SiteSelector;
 use MergeMultisite\Report\ContentAuditReportWriter;
 use MergeMultisite\Report\NeedsReviewReportWriter;
@@ -66,6 +67,14 @@ try {
 }
 
 $source = new Connection( $config->source );
+
+try {
+	$source->pdo();
+} catch ( ConnectionException $exception ) {
+	$logger->error( $exception->getMessage() );
+	exit( 1 );
+}
+
 $siteSelector = new SiteSelector( $source );
 
 if ( $args->has( 'all-sites' ) ) {

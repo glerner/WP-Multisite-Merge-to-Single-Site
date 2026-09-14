@@ -23,6 +23,10 @@ final class MenuWidgetIntegrityCheck implements AuditCheckInterface {
 		return 'menu-widget-integrity';
 	}
 
+	public function description(): string {
+		return 'Nav menu items linking to objects that no longer exist, and sidebar widgets referencing missing widget options/instances.';
+	}
+
 	public function run( Connection $source, MergeConfig $config, array $sites ): array {
 		$findings = array();
 
@@ -54,7 +58,7 @@ final class MenuWidgetIntegrityCheck implements AuditCheckInterface {
 			$findings[] = AuditFinding::warning(
 				$this->name(),
 				sprintf(
-					'Site %d nav menu item %d links to missing object ID %s.',
+					'Site %d, Menu item %d links to missing object ID %s.',
 					$blogId,
 					(int) $row['ID'],
 					(string) $row['object_id']
@@ -110,7 +114,7 @@ final class MenuWidgetIntegrityCheck implements AuditCheckInterface {
 					$findings[] = AuditFinding::warning(
 						$this->name(),
 						sprintf(
-							'Site %d sidebar "%s" references widget "%s", but option "%s" does not exist.',
+							'Site %d, sidebar "%s" references widget "%s", but option "%s" does not exist.',
 							$blogId,
 							(string) $sidebarId,
 							$widgetId,
@@ -130,7 +134,7 @@ final class MenuWidgetIntegrityCheck implements AuditCheckInterface {
 					$findings[] = AuditFinding::warning(
 						$this->name(),
 						sprintf(
-							'Site %d sidebar "%s" references widget "%s", but instance %d is missing from "%s".',
+							'Site %d, sidebar "%s" references widget "%s", but instance %d is missing from "%s".',
 							$blogId,
 							(string) $sidebarId,
 							$widgetId,

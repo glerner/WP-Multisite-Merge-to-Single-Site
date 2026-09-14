@@ -48,9 +48,12 @@ use MergeMultisite\Audit\Checks\UserConflictCheck;
 use MergeMultisite\Config\ConfigException;
 use MergeMultisite\Config\ConfigLoader;
 use MergeMultisite\Db\Connection;
+use MergeMultisite\Db\ConnectionException;
 use MergeMultisite\Migration\SiteSelector;
 use MergeMultisite\Migration\SitesPhpExporter;
+use MergeMultisite\Migration\UploadsPathResolver;
 use MergeMultisite\Report\AuditReportWriter;
+use MergeMultisite\Report\MissingMediaCopyScriptWriter;
 use MergeMultisite\Support\CliArguments;
 use MergeMultisite\Support\Logger;
 
@@ -68,6 +71,14 @@ try {
 }
 
 $source = new Connection( $config->source );
+
+try {
+	$source->pdo();
+} catch ( ConnectionException $exception ) {
+	$logger->error( $exception->getMessage() );
+	exit( 1 );
+}
+
 $siteSelector = new SiteSelector( $source );
 
 if ( $args->has( 'list-sites-php' ) ) {
@@ -103,8 +114,7 @@ if ( $args->has( 'include-deleted' ) ) {
 	$logger->info( sprintf( 'Running integrity checks against %d included site(s).', count( $sites ) ) );
 }
 
-$runner = new AuditRunner(
-	array(
+$checks = array(
 	new OrphanedPostAuthorCheck(),
 	new OrphanedPostParentCheck(),
 	new OrphanedMetaCheck(),
@@ -118,16 +128,36 @@ $runner = new AuditRunner(
 	new MalwareIndicatorCheck(),
 	new OrphanedMediaFileCheck(),
 	new DivergentSiteOptionCheck(),
-	),
-	$logger
 );
 
+$runner = new AuditRunner( $checks, $logger );
+
 $findings = $runner->run( $source, $config, $sites );
+
+if ( $config->mediaSearchPaths !== array() ) {
+	$copyScript = ( new MissingMediaCopyScriptWriter() )->generate(
+		$findings,
+		$config->mediaSearchPaths,
+		new UploadsPathResolver( $config->source->uploadsPath )
+	);
+	if ( $copyScript !== null ) {
+		$scriptPath = $projectRoot . '/var/reports/copy-missing-media-' . date( 'Ymd-His' ) . '.sh';
+		file_put_contents( $scriptPath, $copyScript );
+		chmod( $scriptPath, 0750 );
+		$logger->info( sprintf( 'Missing-media copy script written to %s (review before running).', $scriptPath ) );
+	}
+}
+
+$checkDescriptions = array();
+foreach ( $checks as $check ) {
+	$checkDescriptions[ $check->name() ] = $check->description();
+}
 
 $paths = ( new AuditReportWriter() )->write(
 	$findings,
 	$projectRoot . '/var/reports',
-	'integrity-' . date( 'Ymd-His' )
+	'integrity-' . date( 'Ymd-His' ),
+	$checkDescriptions
 );
 
 $errorCount = count( array_filter( $findings, static fn ( AuditFinding $f ): bool => $f->severity === AuditFinding::SEVERITY_ERROR ) );

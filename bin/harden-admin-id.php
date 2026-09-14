@@ -26,6 +26,7 @@ require_once dirname( __DIR__ ) . '/vendor/autoload.php';
 use MergeMultisite\Config\ConfigException;
 use MergeMultisite\Config\ConfigLoader;
 use MergeMultisite\Db\Connection;
+use MergeMultisite\Db\ConnectionException;
 use MergeMultisite\Destination\AdminIdRenumberer;
 use MergeMultisite\Support\CliArguments;
 use MergeMultisite\Support\Logger;
@@ -45,6 +46,14 @@ try {
 
 $oldId = $args->getInt( 'old-id', 1 );
 $destination = new Connection( $config->destination );
+
+try {
+	$destination->pdo();
+} catch ( ConnectionException $exception ) {
+	$logger->error( $exception->getMessage() );
+	exit( 1 );
+}
+
 $renumberer = new AdminIdRenumberer();
 
 $existing = $destination->fetchOne(

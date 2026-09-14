@@ -23,6 +23,10 @@ final class OrphanedMetaCheck implements AuditCheckInterface {
 		return 'orphaned-meta';
 	}
 
+	public function description(): string {
+		return 'postmeta/commentmeta rows whose parent post/comment no longer exists -- leftovers from deletions that skipped cleanup.';
+	}
+
 	public function run( Connection $source, MergeConfig $config, array $sites ): array {
 		$findings = array();
 
@@ -71,7 +75,7 @@ final class OrphanedMetaCheck implements AuditCheckInterface {
 		AuditFinding::warning(
 			$this->name(),
 			sprintf(
-				'Site %d has %d orphaned postmeta row(s) referencing deleted posts, by meta_key: %s.',
+				'Site %d, postmeta: %d orphaned row(s) by meta_key: %s.',
 				$blogId,
 				$total,
 				implode( ', ', array_slice( $summary, 0, 10 ) ) . ( count( $summary ) > 10 ? sprintf( ' (and %d more meta_key(s))', count( $summary ) - 10 ) : '' )
@@ -111,7 +115,7 @@ final class OrphanedMetaCheck implements AuditCheckInterface {
 		return array(
 		AuditFinding::warning(
 			$this->name(),
-			sprintf( 'Site %d has %d orphaned commentmeta row(s) referencing deleted comments.', $blogId, $count ),
+			sprintf( 'Site %d, commentmeta: %d orphaned row(s).', $blogId, $count ),
 			array(
 			'blog_id' => $blogId,
 			'orphaned_commentmeta_count' => $count,

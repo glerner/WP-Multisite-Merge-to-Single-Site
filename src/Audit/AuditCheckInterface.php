@@ -24,6 +24,12 @@ interface AuditCheckInterface {
 	public function name(): string;
 
 	/**
+	 * One line printed once under this check's report heading, so
+	 * individual findings don't have to repeat what the section means.
+	 */
+	public function description(): string;
+
+	/**
 	 * @param Connection  $source Read-only connection to the source multisite database.
 	 * @param MergeConfig $config The loaded run configuration.
 	 * @param Site[]      $sites  The sites in scope for this run (included, non-deleted).

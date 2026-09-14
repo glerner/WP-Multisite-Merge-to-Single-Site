@@ -29,6 +29,10 @@ final class TermCaseCollisionCheck implements AuditCheckInterface {
 		return 'term-case-collision';
 	}
 
+	public function description(): string {
+		return 'Category/tag labels that differ only by case; the migration merges them into one canonical label.';
+	}
+
 	public function run( Connection $source, MergeConfig $config, array $sites ): array {
 		$candidates = array();
 
@@ -64,7 +68,7 @@ final class TermCaseCollisionCheck implements AuditCheckInterface {
 			$findings[] = AuditFinding::info(
 				$this->name(),
 				sprintf(
-					'Taxonomy "%s": variants %s will merge into canonical label "%s".',
+					'Taxonomy "%s": %s merge into "%s".',
 					$group->taxonomy,
 					implode( ', ', array_map( static fn ( string $l ): string => '"' . $l . '"', $group->variantLabels ) ),
 					$group->canonicalLabel

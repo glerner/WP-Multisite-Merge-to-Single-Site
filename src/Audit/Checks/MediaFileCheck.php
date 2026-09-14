@@ -45,6 +45,10 @@ final class MediaFileCheck implements AuditCheckInterface {
 		return 'media-files';
 	}
 
+	public function description(): string {
+		return 'Attachment files: missing on disk; same filename/different content (renamed during migration); same filename/identical content (dedupes); identical content/different names.';
+	}
+
 	public function run( Connection $source, MergeConfig $config, array $sites ): array {
 		$resolver = new UploadsPathResolver( $config->source->uploadsPath );
 
@@ -132,7 +136,7 @@ final class MediaFileCheck implements AuditCheckInterface {
 			$findings[] = AuditFinding::error(
 				$this->name() . '.missing-file',
 				sprintf(
-					'File "%s" is missing on disk but referenced by %d attachment(s): %s.',
+					'File "%s" missing on disk; referenced by %d attachment(s): %s.',
 					$relativeFile,
 					$count,
 					implode( ', ', $siteList )
@@ -199,7 +203,7 @@ final class MediaFileCheck implements AuditCheckInterface {
 				$errors[] = AuditFinding::error(
 					$this->name() . '.filename-collision-different-content',
 					sprintf(
-						'Filename "%s" appears on %d sites with DIFFERENT content -- will be renamed with a "_site{blogId}" suffix during migration.',
+						'File "%s" on %d sites, DIFFERENT content -- renamed "_site{blogId}" during migration.',
 						$basename,
 						count( $group )
 					),
@@ -209,7 +213,7 @@ final class MediaFileCheck implements AuditCheckInterface {
 				$identical[] = AuditFinding::info(
 					$this->name() . '.filename-collision-identical-content',
 					sprintf(
-						'Filename "%s" appears on %d sites with IDENTICAL content -- will safely de-duplicate to one file.',
+						'File "%s" on %d sites, identical content -- dedupes to one file.',
 						$basename,
 						count( $group )
 					),
@@ -248,7 +252,7 @@ final class MediaFileCheck implements AuditCheckInterface {
 			$findings[] = AuditFinding::info(
 				$this->name() . '.duplicate-content-different-name',
 				sprintf(
-					'Identical file content found under %d different filenames (%s) -- likely the same asset uploaded to the Media Library more than once. Minimal impact unless the file is large; not auto-merged.',
+					'Identical content under %d filenames (%s) -- duplicate uploads; not auto-merged.',
 					count( $distinctNames ),
 					implode( ', ', $distinctNames )
 				),
