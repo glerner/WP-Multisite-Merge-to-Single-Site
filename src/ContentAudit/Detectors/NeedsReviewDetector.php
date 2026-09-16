@@ -65,6 +65,24 @@ final class NeedsReviewDetector implements ContentDetectorInterface {
 			$found[] = 'LMS (LearnDash/LifterLMS)';
 		}
 
+		// Non-core block namespaces: any page built with a block-
+		// library plugin (Spectra/uagb, Greenshift, Kadence, ...) goes
+		// blank or renders raw "block missing" text if that plugin is
+		// absent post-merge. Only namespaced block names are plugin
+		// output; "core-embed/*" is the legacy core Embed block.
+		if ( preg_match_all( '/<!--\s*wp:([a-z0-9_-]+)\/[a-z0-9_-]+/i', $post->content, $matches ) ) {
+			$namespaces = array_values(
+				array_diff(
+					array_unique( $matches[1] ),
+					array( 'core', 'core-embed' )
+				)
+			);
+			if ( $namespaces !== array() ) {
+				sort( $namespaces );
+				$found[] = 'Non-core blocks: ' . implode( ', ', $namespaces );
+			}
+		}
+
 		return array_values( array_unique( $found ) );
 	}
 }

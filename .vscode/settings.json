@@ -1,8 +1,8 @@
 {
     "phpsab.standard": "",
     "phpsab.snifferMode": "onSave",
-    "phpsab.executablePathCS": "${workspaceFolder}/vendor/bin/phpcs",
-    "phpsab.executablePathCBF": "${workspaceFolder}/vendor/bin/phpcbf",
+    "phpsab.executablePathCS": "vendor/bin/phpcs",
+    "phpsab.executablePathCBF": "vendor/bin/phpcbf",
     "phpcs.standard": "phpcs.xml",
     "phpcs.executablePath": "${workspaceFolder}/vendor/bin/phpcs",
     "php-cs-fixer.onsave": false,

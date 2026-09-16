@@ -22,6 +22,7 @@ final class ContentAuditRow {
 		public readonly string $postType,
 		public readonly string $postStatus,
 		public readonly string $slug,
+		public readonly string $postTitle,
 		public readonly array $categoryFindings,
 	) {
 	}
@@ -36,8 +37,9 @@ final class ContentAuditRow {
 			'post_id' => (string) $this->postId,
 			'post_type' => $this->postType,
 			'post_status' => $this->postStatus,
+			'post_title' => $this->postTitle,
 			'slug' => $this->slug,
-			'url' => 'https://' . $this->domain . '/' . trim( $this->slug, '/' ) . '/',
+			'original_url' => 'https://' . $this->domain . '/' . trim( $this->slug, '/' ) . '/',
 		);
 
 		foreach ( $this->categoryFindings as $category => $labels ) {

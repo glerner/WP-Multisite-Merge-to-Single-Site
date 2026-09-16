@@ -9,6 +9,7 @@ use MergeMultisite\Audit\AuditFinding;
 use MergeMultisite\Config\MergeConfig;
 use MergeMultisite\Config\PluginOptionRule;
 use MergeMultisite\Db\Connection;
+use MergeMultisite\Migration\PluginFootprintDetector;
 use MergeMultisite\Migration\PluginInventory;
 
 /**
@@ -31,7 +32,7 @@ final class PluginDataCheck implements AuditCheckInterface {
 	 * @param PluginInventory|null $inventory Injected for tests; when null, one is
 	 *                                         built from config.source.uploadsPath at run time.
 	 */
-	public function __construct( private readonly ?PluginInventory $inventory = null ) {
+	public function __construct( private readonly ?PluginInventory $inventory = null, private readonly ?PluginFootprintDetector $footprintDetector = null ) {
 	}
 
 	public function name(): string {
@@ -44,6 +45,7 @@ final class PluginDataCheck implements AuditCheckInterface {
 
 	public function run( Connection $source, MergeConfig $config, array $sites ): array {
 		$inventory = $this->inventory ?? PluginInventory::fromUploadsPath( $config->source->uploadsPath );
+		$footprintDetector = $this->footprintDetector ?? new PluginFootprintDetector();
 
 		$networkActive = $inventory->networkActiveSlugs( $source );
 
@@ -101,7 +103,7 @@ final class PluginDataCheck implements AuditCheckInterface {
 			$rule = $config->pluginOptionRuleFor( $slug );
 
 			if ( $rule === null ) {
-				$undecided[ $slug ] = $this->detectPluginFootprint( $source, $config, $slug, $installedSites );
+				$undecided[ $slug ] = $footprintDetector->detect( $source, $config, $slug, $installedSites );
 				$siteSummary = implode(
 					', ',
 					array_map(
@@ -150,206 +152,10 @@ final class PluginDataCheck implements AuditCheckInterface {
 		}
 
 		if ( $undecided !== array() ) {
-			$findings[] = $this->undecidedPluginsFinding( $undecided );
+			$findings[] = $this->undecidedPluginsFinding( $undecided, $footprintDetector );
 		}
 
 		return $findings;
-	}
-
-	/**
-	 * Where a plugin actually stores data: wp_options rows, postmeta
-	 * keys, and custom DB tables matching the slug's common spellings
-	 * ("ai-engine" -> "ai_engine%", "aiengine%", "_ai_engine%").
-	 *
-	 * @param int[] $blogIds
-	 *
-	 * @return array{options: string[], postmeta: string[], posts: string[], tables: string[]}
-	 */
-	private function detectPluginFootprint( Connection $source, MergeConfig $config, string $slug, array $blogIds ): array {
-		return array(
-			'options'  => $this->detectOptionNames( $source, $slug, $blogIds ),
-			'postmeta' => $this->detectMetaKeys( $source, $slug, $blogIds ),
-			'posts'    => $this->detectPostTypes( $source, $slug, $blogIds ),
-			'tables'   => $this->detectTables( $source, $config, $slug ),
-		);
-	}
-
-	/**
-	 * @param int[] $blogIds
-	 *
-	 * @return string[] Distinct matching option names.
-	 */
-	private function detectOptionNames( Connection $source, string $slug, array $blogIds ): array {
-		$underscored = str_replace( '-', '_', $slug );
-		$condensed   = str_replace( '-', '', $slug );
-
-		$names = array();
-		foreach ( $blogIds as $blogId ) {
-			$optionsTable = $source->siteTable( 'options', $blogId );
-			$rows = $source->fetchAll(
-				"SELECT DISTINCT option_name FROM {$optionsTable}
-                 WHERE option_name LIKE :underscored OR option_name LIKE :condensed
-                 LIMIT 100",
-				array(
-				'underscored' => $underscored . '%',
-				'condensed' => $condensed . '%',
-				)
-			);
-
-			foreach ( $rows as $row ) {
-				$names[ (string) $row['option_name'] ] = true;
-			}
-		}
-
-		$names = array_keys( $names );
-		sort( $names );
-
-		return $names;
-	}
-
-	/**
-	 * Postmeta keys often start with "_" (hidden meta), so probe both
-	 * bare and underscored variants of each spelling.
-	 *
-	 * @param int[] $blogIds
-	 *
-	 * @return string[] Distinct matching meta keys.
-	 */
-	private function detectMetaKeys( Connection $source, string $slug, array $blogIds ): array {
-		$underscored = str_replace( '-', '_', $slug );
-		$condensed   = str_replace( '-', '', $slug );
-
-		$names = array();
-		foreach ( $blogIds as $blogId ) {
-			$postMetaTable = $source->siteTable( 'postmeta', $blogId );
-			$rows = $source->fetchAll(
-				"SELECT DISTINCT meta_key FROM {$postMetaTable}
-                 WHERE meta_key LIKE :u1 OR meta_key LIKE :u2
-                    OR meta_key LIKE :c1 OR meta_key LIKE :c2
-                 LIMIT 100",
-				array(
-				'u1' => $underscored . '%',
-				'u2' => '_' . $underscored . '%',
-				'c1' => $condensed . '%',
-				'c2' => '_' . $condensed . '%',
-				)
-			);
-
-			foreach ( $rows as $row ) {
-				$names[ (string) $row['meta_key'] ] = true;
-			}
-		}
-
-		$names = array_keys( $names );
-		sort( $names );
-
-		return $names;
-	}
-
-	/**
-	 * Custom post types embedding the slug ("flamingo" ->
-	 * "flamingo_contact"), which is where form-submission and similar
-	 * plugins keep their real data.
-	 *
-	 * @param int[] $blogIds
-	 *
-	 * @return string[] "post_type xN" entries.
-	 */
-	private function detectPostTypes( Connection $source, string $slug, array $blogIds ): array {
-		$underscored = str_replace( '-', '_', $slug );
-		$condensed   = str_replace( '-', '', $slug );
-
-		$counts = array();
-		foreach ( $blogIds as $blogId ) {
-			$postsTable = $source->siteTable( 'posts', $blogId );
-			$rows = $source->fetchAll(
-				"SELECT post_type, COUNT(*) AS n FROM {$postsTable}
-                 WHERE post_type LIKE :u OR post_type LIKE :c
-                 GROUP BY post_type
-                 LIMIT 50",
-				array(
-				'u' => '%' . $underscored . '%',
-				'c' => '%' . $condensed . '%',
-				)
-			);
-
-			foreach ( $rows as $row ) {
-				$type = (string) $row['post_type'];
-				$counts[ $type ] = ( $counts[ $type ] ?? 0 ) + (int) $row['n'];
-			}
-		}
-
-		ksort( $counts );
-
-		return array_map(
-			static fn ( string $type, int $count ): string => sprintf( '%s x%d', $type, $count ),
-			array_keys( $counts ),
-			array_values( $counts )
-		);
-	}
-
-	/**
-	 * Custom DB tables whose name contains the slug, e.g. a plugin's
-	 * own wp3_maiengine_* tables. Table names are prefix-qualified, so
-	 * this is a contains-match, not a prefix-match.
-	 *
-	 * @return string[]
-	 */
-	private function detectTables( Connection $source, MergeConfig $config, string $slug ): array {
-		$underscored = str_replace( '-', '_', $slug );
-		$condensed   = str_replace( '-', '', $slug );
-
-		$rows = $source->fetchAll(
-			'SELECT TABLE_NAME FROM information_schema.TABLES '
-			. 'WHERE TABLE_SCHEMA = :schema AND (TABLE_NAME LIKE :u OR TABLE_NAME LIKE :c)',
-			array(
-			'schema' => $config->source->database,
-			'u' => '%' . $underscored . '%',
-			'c' => '%' . $condensed . '%',
-			)
-		);
-
-		$names = array_map( static fn ( array $row ): string => (string) $row['TABLE_NAME'], $rows );
-		sort( $names );
-
-		return $names;
-	}
-
-	/**
-	 * Turns detected option names into an option_keys suggestion:
-	 * one match stays exact, several collapse to their common prefix
-	 * plus "*". Falls back to a "<prefix>*" placeholder.
-	 *
-	 * @param string[] $names
-	 *
-	 * @return string[]
-	 */
-	private function suggestedOptionKeys( array $names ): array {
-		if ( $names === array() ) {
-			return array( '<prefix>*' );
-		}
-
-		if ( count( $names ) === 1 ) {
-			return array( $names[0] );
-		}
-
-		$lcp = $names[0];
-		foreach ( $names as $name ) {
-			while ( $lcp !== '' && ! str_starts_with( $name, $lcp ) ) {
-				$lcp = substr( $lcp, 0, -1 );
-			}
-		}
-
-		// Trim a trailing partial word so e.g. "ai_engin" becomes
-		// "ai_engine" -- cleaner to read and no less correct.
-		if ( $lcp !== '' && ! str_ends_with( $lcp, '_' ) && ! str_ends_with( $lcp, '-' ) ) {
-			$lastSeparator = max( (int) strrpos( $lcp, '_' ), (int) strrpos( $lcp, '-' ) );
-			if ( $lastSeparator > 0 ) {
-				$lcp = substr( $lcp, 0, $lastSeparator + 1 );
-			}
-		}
-
-		return array( $lcp === '' ? '<prefix>*' : $lcp . '*' );
 	}
 
 	/**
@@ -363,7 +169,7 @@ final class PluginDataCheck implements AuditCheckInterface {
 	 * @param array<string, array{options: string[], postmeta: string[], posts: string[], tables: string[]}> $undecided
 	 *        Plugin slug => detected footprint.
 	 */
-	private function undecidedPluginsFinding( array $undecided ): AuditFinding {
+	private function undecidedPluginsFinding( array $undecided, PluginFootprintDetector $footprintDetector ): AuditFinding {
 		$include = array();
 		$elsewhere = array();
 		$exclude = array();
@@ -371,7 +177,7 @@ final class PluginDataCheck implements AuditCheckInterface {
 
 		foreach ( $undecided as $slug => $footprint ) {
 			if ( $footprint['options'] !== array() ) {
-				$keys = $this->suggestedOptionKeys( $footprint['options'] );
+				$keys = $footprintDetector->suggestedOptionKeys( $footprint['options'] );
 				$sample = array_slice( $footprint['options'], 0, 3 );
 				$include[] = sprintf(
 					"    '%s' => ['mode' => 'include', 'option_keys' => %s],  // found: %s%s",

@@ -87,14 +87,49 @@ final class FormPluginDetector implements ContentDetectorInterface {
 
 		// Fallback: some services (Brevo among them) are commonly added
 		// by pasting raw HTML embed code from the provider's site rather
-		// than using a shortcode/block at all. That HTML always includes
-		// a <form> tag, so when nothing more specific matched, flag it
-		// as "unidentified" rather than missing it entirely -- you'll
-		// need to open the page to see which service it actually is.
-		if ( $found === array() && preg_match( '/<form\b/i', $post->content ) ) {
-			$found[] = 'Unidentified HTML form (pasted embed code, e.g. Brevo)';
+		// than using a shortcode/block at all, and hand-coded forms do
+		// the same. Surface the form's action target -- the host/path
+		// usually identifies the actual processor (a pasted Brevo
+		// endpoint, a mailto:, a self-processing PHP file, ...).
+		if ( $found === array() ) {
+			foreach ( $this->formActions( $post->content ) as $action ) {
+				$found[] = sprintf( 'HTML form (action: %s)', $action );
+			}
 		}
 
 		return $found;
+	}
+
+	/**
+	 * The core Search block (and get_search_form()) renders a
+	 * <form role="search" ... class="...wp-block-search..."> -- it is
+	 * WordPress's own markup, not a form plugin or a pasted embed, so
+	 * it is excluded from the fallback.
+	 */
+	private function isCoreSearchForm( string $attrs ): bool {
+		return preg_match( '/\brole\s*=\s*["\']search["\']/i', $attrs ) === 1
+			|| preg_match( '/\bclass\s*=\s*["\'][^"\']*\b(?:wp-block-search|search-form)\b/i', $attrs ) === 1;
+	}
+
+	/**
+	 * @return string[] Distinct form action targets, e.g. '"https://x.com/s"',
+	 *                  '"(same page)"' for empty/missing/# actions.
+	 */
+	private function formActions( string $content ): array {
+		preg_match_all( '/<form\b([^>]*)>/i', $content, $tags );
+
+		$actions = array();
+		foreach ( $tags[1] as $attrs ) {
+			if ( $this->isCoreSearchForm( $attrs ) ) {
+				continue;
+			}
+			if ( preg_match( '/\baction\s*=\s*(["\']?)([^\s"\'>]*)\1/i', $attrs, $attr ) !== 1 ) {
+				$actions[] = '(no action attribute)';
+				continue;
+			}
+			$actions[] = $attr[2] === '' || $attr[2] === '#' ? '(same page)' : '"' . $attr[2] . '"';
+		}
+
+		return array_values( array_unique( $actions ) );
 	}
 }

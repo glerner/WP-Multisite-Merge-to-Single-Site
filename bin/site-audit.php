@@ -17,7 +17,8 @@
  * Options:
  *   --site=<blog_id>     Scan only this one subsite.
  *   --all-sites          Scan every non-deleted, included site.
- *   --post-types=a,b,c   Restrict to these post types (default: all).
+ *   --post-types=a,b,c   Restrict to these post types (default: all
+ *                        except config.php "excluded_post_types").
  *   --search=a,b,c       Instead of the detector pass, do a plain
  *                        case-insensitive content search for these
  *                        terms across the selected sites and write a
@@ -39,14 +40,18 @@ use MergeMultisite\ContentAudit\Detectors\BlockDetector;
 use MergeMultisite\ContentAudit\Detectors\EcommerceDetector;
 use MergeMultisite\ContentAudit\Detectors\FormPluginDetector;
 use MergeMultisite\ContentAudit\Detectors\GalleryDetector;
+use MergeMultisite\ContentAudit\Detectors\NavMenuItemDetector;
 use MergeMultisite\ContentAudit\Detectors\NeedsReviewDetector;
 use MergeMultisite\ContentAudit\Detectors\PageBuilderDetector;
 use MergeMultisite\ContentAudit\Detectors\SeoPluginDetector;
 use MergeMultisite\ContentAudit\Detectors\ShortcodeDetector;
 use MergeMultisite\ContentAudit\Detectors\VideoEmbedDetector;
+use MergeMultisite\ContentAudit\PluginUsageRollup;
 use MergeMultisite\ContentAudit\PostScanner;
 use MergeMultisite\Db\Connection;
 use MergeMultisite\Db\ConnectionException;
+use MergeMultisite\Migration\PluginFootprintDetector;
+use MergeMultisite\Migration\PluginInventory;
 use MergeMultisite\Migration\SiteSelector;
 use MergeMultisite\Report\ContentAuditReportWriter;
 use MergeMultisite\Report\NeedsReviewReportWriter;
@@ -122,7 +127,7 @@ if ( $searchOption !== null ) {
 	);
 	$logger->info( sprintf( 'Searching %d site(s) for: %s', count( $sites ), implode( ', ', $needles ) ) );
 
-	$hits = $scanner->searchContent( $source, $sites, $needles, $postTypes );
+	$hits = $scanner->searchContent( $source, $sites, $needles, $postTypes, $config->excludedPostTypes );
 
 	$outputPath = $projectRoot . '/var/reports/search-' . date( 'Ymd-His' ) . '.csv';
 	if ( ! is_dir( dirname( $outputPath ) ) ) {
@@ -132,20 +137,17 @@ if ( $searchOption !== null ) {
 	$handle = fopen( $outputPath, 'w' );
 	fputcsv( $handle, array( 'blog_id', 'domain', 'post_id', 'post_type', 'post_status', 'post_title', 'slug', 'matched_needle' ), ',', '"', '\\' );
 
-	foreach ( $hits as $hit ) {
-		$site = null;
-		foreach ( $sites as $candidate ) {
-			if ( $candidate->blogId === $hit['blog_id'] ) {
-				$site = $candidate;
-				break;
-			}
-		}
+	$domains = array();
+	foreach ( $sites as $site ) {
+		$domains[ $site->blogId ] = $site->domain;
+	}
 
+	foreach ( $hits as $hit ) {
 		fputcsv(
 			$handle,
 			array(
 				(string) $hit['blog_id'],
-				(string) ( $site?->domain ?? '' ),
+				(string) ( $domains[ $hit['blog_id'] ] ?? '' ),
 				(string) $hit['post_id'],
 				$hit['post_type'],
 				$hit['post_status'],
@@ -167,21 +169,54 @@ if ( $searchOption !== null ) {
 
 $detectors = array(
 	new BlockDetector(),
-	new ShortcodeDetector(),
+	new ShortcodeDetector( $config->ignoredShortcodes ),
 	new PageBuilderDetector(),
 	new FormPluginDetector(),
 	new GalleryDetector(),
 	new VideoEmbedDetector(),
 	new SeoPluginDetector(),
 	new EcommerceDetector(),
+	new NavMenuItemDetector(),
 	new NeedsReviewDetector(),
 );
 
 $logger->info( sprintf( 'Scanning %d site(s) with %d detector(s)...', count( $sites ), count( $detectors ) ) );
 
 $scanner = new PostScanner( $detectors );
-$details = $scanner->scanWithDetails( $source, $sites, $postTypes );
+$details = $scanner->scanWithDetails( $source, $sites, $postTypes, $config->excludedPostTypes );
 $rows = array_map( static fn ( array $d ): ContentAuditRow => $d['row'], $details );
+
+// Which installed plugins the detected content signals actually map
+// to, and which installed plugins left no content footprint at all --
+// the summary's "can I uninstall this?" section. Network-active
+// plugins count as active on every scanned site.
+$inventory = PluginInventory::fromUploadsPath( $config->source->uploadsPath );
+$activeBySlug = array();
+foreach ( $inventory->networkActiveSlugs( $source ) as $slug ) {
+	$activeBySlug[ $slug ] = array_map( static fn ( $site ): int => $site->blogId, $sites );
+}
+foreach ( $sites as $site ) {
+	foreach ( $inventory->activeSlugsForSite( $source, $site->blogId ) as $slug ) {
+		$activeBySlug[ $slug ][] = $site->blogId;
+	}
+}
+$footprintDetector = new PluginFootprintDetector();
+$allBlogIds = array_map( static fn ( $site ): int => $site->blogId, $sites );
+$pluginUsage = ( new PluginUsageRollup() )->build(
+	$rows,
+	$inventory->installedSlugs(),
+	$activeBySlug,
+	static function ( string $slug ) use ( $footprintDetector, $source, $config, $allBlogIds ): array {
+		$footprint = $footprintDetector->detect( $source, $config, $slug, $allBlogIds );
+		return array(
+			'has_data' => $footprint['options'] !== array()
+				|| $footprint['postmeta'] !== array()
+				|| $footprint['posts'] !== array()
+				|| $footprint['tables'] !== array(),
+			'summary'  => $footprintDetector->describe( $footprint ),
+		);
+	}
+);
 
 $categories = array_map(
 	static fn ( $detector ): string => $detector->category(),
@@ -192,7 +227,8 @@ $paths = ( new ContentAuditReportWriter() )->write(
 	$rows,
 	$categories,
 	$projectRoot . '/var/reports',
-	'site-audit-' . date( 'Ymd-His' )
+	'site-audit-' . date( 'Ymd-His' ),
+	$pluginUsage
 );
 
 // The "needs review" CSV: only pages carrying a page-builder /
@@ -216,6 +252,11 @@ $logger->info( sprintf( 'Scanned %d post(s)/page(s).', count( $rows ) ) );
 $logger->info( sprintf( 'CSV: %s', $paths['csv'] ) );
 $logger->info( sprintf( 'JSON: %s', $paths['json'] ) );
 $logger->info( sprintf( 'Summary: %s', $paths['summary'] ) );
+if ( $paths['xlsx'] !== null ) {
+	$logger->info( sprintf( 'XLSX: %s', $paths['xlsx'] ) );
+} else {
+	$logger->info( 'XLSX skipped: install ext-zip (sudo apt install php8.4-zip php8.4-gd) for spreadsheet output.' );
+}
 $logger->info( sprintf( '%d page(s) likely needing manual review after migration. CSV: %s', $needsReviewCount, $needsReviewPath ) );
 
 exit( 0 );

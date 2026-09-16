@@ -37,6 +37,9 @@ final class MergeConfig {
 	 * @param string[]                             $mediaSearchPaths Extra directories searched for files
 	 *                                                              missing from uploads, so a copy
 	 *                                                              script can be generated for them.
+	 * @param string[]                             $ignoredShortcodes Extra shortcode tags the site-audit
+	 *                                                              should not report (from
+	 *                                                              shortcode-ignore.php).
 	 */
 	public function __construct(
 		public readonly DatabaseConfig $source,
@@ -55,6 +58,7 @@ final class MergeConfig {
 		public readonly ?string $wpscanApiToken = null,
 		public readonly array $suppressions = array(),
 		public readonly array $mediaSearchPaths = array(),
+		public readonly array $ignoredShortcodes = array(),
 	) {
 	}
 

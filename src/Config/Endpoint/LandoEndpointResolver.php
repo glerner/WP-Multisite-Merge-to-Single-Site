@@ -146,7 +146,7 @@ final class LandoEndpointResolver implements EndpointResolverInterface {
 		$homeEnv = getenv( 'HOME' );
 		$home = $homeEnv === false ? '' : $homeEnv;
 		foreach ( array( $home . '/.lando/bin/lando', '/usr/local/bin/lando', '/usr/bin/lando' ) as $candidate ) {
-			if ( $candidate !== '' && is_executable( $candidate ) ) {
+			if ( is_executable( $candidate ) ) {
 				return $candidate;
 			}
 		}

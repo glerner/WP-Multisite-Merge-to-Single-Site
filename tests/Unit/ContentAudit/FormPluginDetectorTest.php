@@ -46,10 +46,50 @@ final class FormPluginDetectorTest extends TestCase {
 		$detector = new FormPluginDetector();
 
 		// e.g. HTML embed code pasted directly from Brevo's site, with
-		// no shortcode/block wrapper at all.
+		// no shortcode/block wrapper at all. The action target is
+		// surfaced -- it usually identifies the actual processor.
 		$post = new ScannedPost( 1, 1, 'page', 'publish', 'contact', 'Contact', '<form action="https://example.com/submit"><input type="email"></form>', array() );
 
-		self::assertSame( array( 'Unidentified HTML form (pasted embed code, e.g. Brevo)' ), $detector->detect( $post ) );
+		self::assertSame( array( 'HTML form (action: "https://example.com/submit")' ), $detector->detect( $post ) );
+	}
+
+	public function testReportsSamePageAndMissingFormActions(): void {
+		$detector = new FormPluginDetector();
+
+		$post = new ScannedPost(
+			1,
+			1,
+			'page',
+			'publish',
+			'contact',
+			'Contact',
+			'<form action="#"><input></form> <form><input></form> <form action=""><input></form>',
+			array()
+		);
+
+		self::assertSame(
+			array( 'HTML form (action: (same page))', 'HTML form (action: (no action attribute))' ),
+			$detector->detect( $post )
+		);
+	}
+
+	public function testCoreSearchBlockFormIsNotReported(): void {
+		$detector = new FormPluginDetector();
+
+		// The core Search block renders a <form role="search"> -- WP's
+		// own markup, not a form plugin or a pasted embed.
+		$post = new ScannedPost(
+			1,
+			1,
+			'page',
+			'publish',
+			'contact',
+			'Contact',
+			'<form role="search" method="get" action="https://example.com/" class="wp-block-search"><input type="search" name="s"></form>',
+			array()
+		);
+
+		self::assertSame( array(), $detector->detect( $post ) );
 	}
 
 	public function testDoesNotReportUnidentifiedFormWhenAKnownPluginAlreadyMatched(): void {

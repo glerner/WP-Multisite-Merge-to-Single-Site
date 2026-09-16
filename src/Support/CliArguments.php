@@ -61,7 +61,7 @@ final class CliArguments {
 			return $default;
 		}
 
-		return is_bool( $value ) ? ( $value ? '1' : '0' ) : $value;
+		return is_bool( $value ) ? (string) (int) $value : $value;
 	}
 
 	public function getInt( string $key, ?int $default = null ): ?int {

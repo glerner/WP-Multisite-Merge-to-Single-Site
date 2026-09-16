@@ -42,10 +42,13 @@ final class BlockDetector implements ContentDetectorInterface {
 		);
 
 		if ( ! $this->includeCoreBlocks ) {
+			// "core-embed/*" is the legacy namespace of the core Embed
+			// block (e.g. core-embed/youtube) -- core, not a plugin.
 			$blocks = array_values(
 				array_filter(
 					$blocks,
 					static fn ( string $block ): bool => ! str_starts_with( $block, 'core/' )
+						&& ! str_starts_with( $block, 'core-embed/' )
 				)
 			);
 		}

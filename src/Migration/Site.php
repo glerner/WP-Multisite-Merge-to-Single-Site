@@ -49,7 +49,7 @@ final class Site {
 		$blogId = (int) $blogRow['blog_id'];
 		$deleted = ( (int) ( $blogRow['deleted'] ?? 0 ) ) === 1;
 
-		$included = $override?->include ?? true;
+		$included = $override->include ?? true;
 		if ( $deleted ) {
 			$included = false;
 		}
@@ -61,7 +61,7 @@ final class Site {
 			title: $title,
 			deleted: $deleted,
 			included: $included,
-			categoryName: $override?->categoryName ?? $title,
+			categoryName: $override->categoryName ?? $title,
 			categorySlug: $override?->categorySlug,
 		);
 	}

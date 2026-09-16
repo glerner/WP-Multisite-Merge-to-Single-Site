@@ -85,6 +85,10 @@ final class ConfigLoader {
 				fn ( string $path ): string => $this->expandHome( $path ),
 				array_map( 'strval', is_array( $config['media_search_paths'] ?? null ) ? $config['media_search_paths'] : array() )
 			),
+			ignoredShortcodes: array_map(
+				static fn ( $tag ): string => strtolower( trim( (string) $tag, " \t\n\r\0\x0B[]" ) ),
+				array_values( array_filter( $this->optionalArrayFile( 'shortcode-ignore.php' ), 'is_string' ) )
+			),
 		);
 	}
 

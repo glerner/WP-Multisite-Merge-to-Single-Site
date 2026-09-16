@@ -25,15 +25,17 @@ final class PostScanner {
 
 	/**
 	 * @param Site[]   $sites
-	 * @param string[] $postTypes Post types to include; empty array means "all".
+	 * @param string[] $postTypes         Post types to include; empty array means "all".
+	 * @param string[] $excludedPostTypes Post types to skip when $postTypes is empty
+	 *                                    (an explicit include list wins over exclusions).
 	 *
 	 * @return ContentAuditRow[]
 	 */
-	public function scan( Connection $connection, array $sites, array $postTypes = array() ): array {
+	public function scan( Connection $connection, array $sites, array $postTypes = array(), array $excludedPostTypes = array() ): array {
 		$rows = array();
 
 		foreach ( $sites as $site ) {
-			foreach ( $this->scanSite( $connection, $site, $postTypes ) as $row ) {
+			foreach ( $this->scanSite( $connection, $site, $postTypes, $excludedPostTypes ) as $row ) {
 				$rows[] = $row;
 			}
 		}
@@ -48,15 +50,17 @@ final class PostScanner {
 	 * access it without a second database pass.
 	 *
 	 * @param Site[]   $sites
-	 * @param string[] $postTypes Post types to include; empty array means "all".
+	 * @param string[] $postTypes         Post types to include; empty array means "all".
+	 * @param string[] $excludedPostTypes Post types to skip when $postTypes is empty
+	 *                                    (an explicit include list wins over exclusions).
 	 *
 	 * @return array<int, array{row: ContentAuditRow, post: ScannedPost}>
 	 */
-	public function scanWithDetails( Connection $connection, array $sites, array $postTypes = array() ): array {
+	public function scanWithDetails( Connection $connection, array $sites, array $postTypes = array(), array $excludedPostTypes = array() ): array {
 		$results = array();
 
 		foreach ( $sites as $site ) {
-			foreach ( $this->scanSiteWithDetails( $connection, $site, $postTypes ) as $result ) {
+			foreach ( $this->scanSiteWithDetails( $connection, $site, $postTypes, $excludedPostTypes ) as $result ) {
 				$results[] = $result;
 			}
 		}
@@ -71,17 +75,19 @@ final class PostScanner {
 	 * find-anything search rather than a detector pass.
 	 *
 	 * @param Site[]   $sites
-	 * @param string[] $needles   Case-insensitive terms to search for
-	 *                            in post_content / post_title.
-	 * @param string[] $postTypes Post types to include; empty array means "all".
+	 * @param string[] $needles           Case-insensitive terms to search for
+	 *                                    in post_content / post_title.
+	 * @param string[] $postTypes         Post types to include; empty array means "all".
+	 * @param string[] $excludedPostTypes Post types to skip when $postTypes is empty
+	 *                                    (an explicit include list wins over exclusions).
 	 *
 	 * @return array<int, array{blog_id:int, post_id:int, post_type:string, post_status:string, post_title:string, post_name:string, matched_needle:string}>
 	 */
-	public function searchContent( Connection $connection, array $sites, array $needles, array $postTypes = array() ): array {
+	public function searchContent( Connection $connection, array $sites, array $needles, array $postTypes = array(), array $excludedPostTypes = array() ): array {
 		$hits = array();
 
 		foreach ( $sites as $site ) {
-			foreach ( $this->searchSite( $connection, $site, $needles, $postTypes ) as $hit ) {
+			foreach ( $this->searchSite( $connection, $site, $needles, $postTypes, $excludedPostTypes ) as $hit ) {
 				$hits[] = $hit;
 			}
 		}
@@ -95,21 +101,11 @@ final class PostScanner {
 	 *
 	 * @return array<int, array{blog_id:int, post_id:int, post_type:string, post_status:string, post_title:string, post_name:string, matched_needle:string}>
 	 */
-	private function searchSite( Connection $connection, Site $site, array $needles, array $postTypes ): array {
+	private function searchSite( Connection $connection, Site $site, array $needles, array $postTypes, array $excludedPostTypes = array() ): array {
 		$postsTable = $connection->siteTable( 'posts', $site->blogId );
 
-		$where = "post_status NOT IN ('trash', 'auto-draft')";
 		$params = array();
-
-		if ( $postTypes !== array() ) {
-			$placeholders = array();
-			foreach ( $postTypes as $index => $postType ) {
-				$key = 'post_type_' . $index;
-				$placeholders[] = ':' . $key;
-				$params[ $key ] = $postType;
-			}
-			$where .= ' AND post_type IN (' . implode( ', ', $placeholders ) . ')';
-		}
+		$where = "post_status NOT IN ('trash', 'auto-draft')" . $this->postTypeClause( $postTypes, $excludedPostTypes, $params );
 
 		$posts = $connection->fetchAll(
 			"SELECT ID, post_type, post_status, post_title, post_name, post_content FROM {$postsTable} WHERE {$where}",
@@ -150,12 +146,13 @@ final class PostScanner {
 
 	/**
 	 * @param string[] $postTypes
+	 * @param string[] $excludedPostTypes
 	 *
 	 * @return ContentAuditRow[]
 	 */
-	private function scanSite( Connection $connection, Site $site, array $postTypes ): array {
+	private function scanSite( Connection $connection, Site $site, array $postTypes, array $excludedPostTypes = array() ): array {
 		$rows = array();
-		foreach ( $this->scanSiteWithDetails( $connection, $site, $postTypes ) as $result ) {
+		foreach ( $this->scanSiteWithDetails( $connection, $site, $postTypes, $excludedPostTypes ) as $result ) {
 			$rows[] = $result['row'];
 		}
 
@@ -164,25 +161,16 @@ final class PostScanner {
 
 	/**
 	 * @param string[] $postTypes
+	 * @param string[] $excludedPostTypes
 	 *
 	 * @return array<int, array{row: ContentAuditRow, post: ScannedPost}>
 	 */
-	private function scanSiteWithDetails( Connection $connection, Site $site, array $postTypes ): array {
+	private function scanSiteWithDetails( Connection $connection, Site $site, array $postTypes, array $excludedPostTypes = array() ): array {
 		$postsTable = $connection->siteTable( 'posts', $site->blogId );
 		$postMetaTable = $connection->siteTable( 'postmeta', $site->blogId );
 
-		$where = "post_status NOT IN ('trash', 'auto-draft')";
 		$params = array();
-
-		if ( $postTypes !== array() ) {
-			$placeholders = array();
-			foreach ( $postTypes as $index => $postType ) {
-				$key = 'post_type_' . $index;
-				$placeholders[] = ':' . $key;
-				$params[ $key ] = $postType;
-			}
-			$where .= ' AND post_type IN (' . implode( ', ', $placeholders ) . ')';
-		}
+		$where = "post_status NOT IN ('trash', 'auto-draft')" . $this->postTypeClause( $postTypes, $excludedPostTypes, $params );
 
 		$posts = $connection->fetchAll(
 			"SELECT ID, post_type, post_status, post_name, post_title, post_content FROM {$postsTable} WHERE {$where}",
@@ -226,6 +214,7 @@ final class PostScanner {
 					postType: $scannedPost->postType,
 					postStatus: $scannedPost->postStatus,
 					slug: $scannedPost->slug,
+					postTitle: $scannedPost->postTitle,
 					categoryFindings: $categoryFindings,
 				),
 				'post' => $scannedPost,
@@ -233,6 +222,34 @@ final class PostScanner {
 		}
 
 		return $results;
+	}
+
+	/**
+	 * Builds the post_type WHERE fragment: an IN() allow-list when
+	 * $postTypes is given, otherwise a NOT IN() exclusion list (so an
+	 * explicit --post-types selection can still audit an excluded type
+	 * like "revision" on purpose).
+	 *
+	 * @param string[]              $postTypes
+	 * @param string[]              $excludedPostTypes
+	 * @param array<string, string> $params Bound parameters, appended.
+	 */
+	private function postTypeClause( array $postTypes, array $excludedPostTypes, array &$params ): string {
+		$types = $postTypes !== array() ? $postTypes : null;
+		$list = $types ?? $excludedPostTypes;
+
+		if ( $list === array() ) {
+			return '';
+		}
+
+		$placeholders = array();
+		foreach ( $list as $index => $postType ) {
+			$key = 'post_type_' . $index;
+			$placeholders[] = ':' . $key;
+			$params[ $key ] = (string) $postType;
+		}
+
+		return sprintf( ' AND post_type %s (%s)', $types === null ? 'NOT IN' : 'IN', implode( ', ', $placeholders ) );
 	}
 
 	/**
