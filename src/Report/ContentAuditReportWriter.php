@@ -22,31 +22,38 @@ final class ContentAuditReportWriter {
 	/**
 	 * @param ContentAuditRow[] $rows
 	 * @param string[]          $categories   Every detector category, in the order columns should appear.
-	 * @param array             $pluginUsage  Optional PluginUsageRollup::build() result, rendered as
-	 *                                        the first summary section.
+	 * @param array             $pluginUsage       Optional PluginUsageRollup::build() result, rendered as
+	 *                                             the first summary section.
+	 * @param string            $spreadsheetFormat 'xlsx', 'csv', or 'both' (config spreadsheet_format).
+	 *                                             'xlsx' falls back to CSV when ext-zip is missing, so
+	 *                                             a spreadsheet always lands.
 	 *
-	 * @return array{csv: string, json: string, summary: string, xlsx: string|null}
+	 * @return array{csv: string|null, json: string, summary: string, xlsx: string|null}
 	 */
-	public function write( array $rows, array $categories, string $outputDirectory, string $baseName, array $pluginUsage = array() ): array {
+	public function write( array $rows, array $categories, string $outputDirectory, string $baseName, array $pluginUsage = array(), string $spreadsheetFormat = 'both' ): array {
 		if ( ! is_dir( $outputDirectory ) ) {
 			mkdir( $outputDirectory, 0775, true );
 		}
 
-		$csvPath     = $outputDirectory . '/' . $baseName . '.csv';
 		$jsonPath    = $outputDirectory . '/' . $baseName . '.json';
 		$summaryPath = $outputDirectory . '/' . $baseName . '-summary.md';
 
-		file_put_contents( $csvPath, $this->toCsv( $rows, $categories ) );
 		file_put_contents( $jsonPath, $this->toJson( $rows ) );
 		file_put_contents( $summaryPath, $this->toSummary( $rows, $categories, $pluginUsage ) );
 
-		// The .xlsx needs ext-zip (xlsx is a zip of XML parts); skip
-		// rather than fail so the other formats still land on hosts
-		// without it.
+		// The .xlsx needs ext-zip (xlsx is a zip of XML parts); when it
+		// is missing and xlsx was requested, fall back to CSV rather
+		// than produce no spreadsheet at all.
+		$csvPath  = null;
 		$xlsxPath = null;
-		if ( extension_loaded( 'zip' ) ) {
+		$wantXlsx = $spreadsheetFormat !== 'csv' && extension_loaded( 'zip' );
+		if ( $wantXlsx ) {
 			$xlsxPath = $outputDirectory . '/' . $baseName . '.xlsx';
 			$this->toXlsx( $rows, $categories, $xlsxPath );
+		}
+		if ( $spreadsheetFormat === 'csv' || $spreadsheetFormat === 'both' || ( $spreadsheetFormat === 'xlsx' && $xlsxPath === null ) ) {
+			$csvPath = $outputDirectory . '/' . $baseName . '.csv';
+			file_put_contents( $csvPath, $this->toCsv( $rows, $categories ) );
 		}
 
 		return array(

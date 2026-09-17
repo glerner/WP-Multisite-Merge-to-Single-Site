@@ -39,7 +39,7 @@ final class ShortcodeDetector implements ContentDetectorInterface {
 		'a', 'an', 'and', 'are', 'as', 'at', 'be', 'but', 'by', 'for', 'from', 'has', 'have', 'he', 'his',
 		'i', 'if', 'in', 'is', 'it', 'its', 'me', 'my', 'no', 'not', 'of', 'on', 'or', 'our', 's', 'she',
 		'so', 'that', 'the', 'these', 'they', 'this', 'to', 'up', 'us', 'was', 'we', 'what', 'when',
-		'which', 'who', 'will', 'with', 'would', 'you', 'your', 'note', 'see', 'e.g', 'etc',
+		'which', 'who', 'will', 'with', 'would', 'you', 'your', 'note', 'see', 'etc',
 		// Pasted code/config noise seen in real posts (dump keys, placeholders, prose in brackets).
 		'args', 'before', 'blog_id', 'class', 'domain', 'encrypted', 'end', 'error', 'excellent',
 		'file', 'function', 'id', 'insert_id', 'instead', 'last_error', 'last_query', 'last_result',

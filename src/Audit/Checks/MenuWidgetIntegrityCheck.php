@@ -44,29 +44,65 @@ final class MenuWidgetIntegrityCheck implements AuditCheckInterface {
 	private function checkMenuItems( Connection $source, int $blogId ): array {
 		$postsTable = $source->siteTable( 'posts', $blogId );
 		$postMetaTable = $source->siteTable( 'postmeta', $blogId );
+		$termsTable = $source->siteTable( 'terms', $blogId );
 
-		$rows = $source->fetchAll(
-			"SELECT item.ID, meta.meta_value AS object_id
+		// _menu_item_object_id points at different tables depending on
+		// _menu_item_type: 'post_type' items store a posts.ID, while
+		// 'taxonomy' items store a terms.term_id -- checking taxonomy
+		// items against wp_posts would flag every category/tag menu
+		// link as broken. 'custom' and 'post_type_archive' items have
+		// no object row to check, so they're skipped.
+		$items = $source->fetchAll(
+			"SELECT item.ID,
+			        typeMeta.meta_value AS item_type,
+			        objectMeta.meta_value AS object_id
              FROM {$postsTable} item
-             INNER JOIN {$postMetaTable} meta ON meta.post_id = item.ID AND meta.meta_key = '_menu_item_object_id'
-             LEFT JOIN {$postsTable} target ON target.ID = CAST(meta.meta_value AS UNSIGNED)
-             WHERE item.post_type = 'nav_menu_item' AND target.ID IS NULL AND meta.meta_value != '0'"
+             INNER JOIN {$postMetaTable} objectMeta
+                ON objectMeta.post_id = item.ID AND objectMeta.meta_key = '_menu_item_object_id'
+             LEFT JOIN {$postMetaTable} typeMeta
+                ON typeMeta.post_id = item.ID AND typeMeta.meta_key = '_menu_item_type'
+             WHERE item.post_type = 'nav_menu_item' AND objectMeta.meta_value != '0'"
 		);
 
 		$findings = array();
-		foreach ( $rows as $row ) {
+		foreach ( $items as $row ) {
+			$itemType = (string) ( $row['item_type'] ?? '' );
+			$objectId = (string) $row['object_id'];
+
+			if ( $itemType === 'post_type' || $itemType === '' ) {
+				// Pre-3.0 menu items and odd rows may lack the type
+				// meta; default to the posts table as before.
+				$exists = $source->fetchScalar(
+					"SELECT ID FROM {$postsTable} WHERE ID = :id LIMIT 1",
+					array( 'id' => $objectId )
+				) !== null;
+			} elseif ( $itemType === 'taxonomy' ) {
+				$exists = $source->fetchScalar(
+					"SELECT term_id FROM {$termsTable} WHERE term_id = :id LIMIT 1",
+					array( 'id' => $objectId )
+				) !== null;
+			} else {
+				continue; // custom, post_type_archive, anything else: no object to check.
+			}
+
+			if ( $exists ) {
+				continue;
+			}
+
 			$findings[] = AuditFinding::warning(
 				$this->name(),
 				sprintf(
-					'Site %d, Menu item %d links to missing object ID %s.',
+					'Site %d, Menu item %d (%s) links to missing object ID %s.',
 					$blogId,
 					(int) $row['ID'],
-					(string) $row['object_id']
+					$itemType !== '' ? $itemType : 'post_type',
+					$objectId
 				),
 				array(
 				'blog_id' => $blogId,
 				'menu_item_id' => (int) $row['ID'],
-				'object_id' => $row['object_id'],
+				'item_type' => $itemType !== '' ? $itemType : 'post_type',
+				'object_id' => $objectId,
 				)
 			);
 		}

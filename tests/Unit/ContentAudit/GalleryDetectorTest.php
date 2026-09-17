@@ -56,6 +56,16 @@ final class GalleryDetectorTest extends TestCase {
 	public function testDetectsBeaverBuilderGalleryViaFlBuilderDataMeta(): void {
 		$detector = new GalleryDetector();
 
+		// _fl_builder_data is PHP-serialized, not JSON: a tree of node
+		// objects where module nodes carry settings->type.
+		$layout = array(
+			(object) array( 'type' => 'row' ),
+			(object) array(
+				'type'     => 'module',
+				'settings' => (object) array( 'type' => 'gallery' ),
+			),
+		);
+
 		$post = new ScannedPost(
 			1,
 			1,
@@ -64,10 +74,34 @@ final class GalleryDetectorTest extends TestCase {
 			'portfolio',
 			'Portfolio',
 			'',
-			array( '_fl_builder_data' => array( '[{"type":"gallery"}]' ) )
+			array( '_fl_builder_data' => array( serialize( $layout ) ) )
 		);
 
 		self::assertSame( array( 'Beaver Builder Gallery' ), $detector->detect( $post ) );
+	}
+
+	public function testBeaverBuilderSerializedDataWithoutGalleryIsNotReported(): void {
+		$detector = new GalleryDetector();
+
+		$layout = array(
+			(object) array(
+				'type'     => 'module',
+				'settings' => (object) array( 'type' => 'heading' ),
+			),
+		);
+
+		$post = new ScannedPost(
+			1,
+			1,
+			'page',
+			'publish',
+			'portfolio',
+			'Portfolio',
+			'',
+			array( '_fl_builder_data' => array( serialize( $layout ) ) )
+		);
+
+		self::assertSame( array(), $detector->detect( $post ) );
 	}
 
 	public function testReturnsEmptyArrayWhenNoGalleryFound(): void {

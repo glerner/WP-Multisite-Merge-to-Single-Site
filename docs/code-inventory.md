@@ -72,6 +72,12 @@ probing to `PluginFootprintDetector`), `MenuWidgetIntegrityCheck`,
 `ContentDetectorInterface` emits labels under its category → `ContentAuditRow`
 (one row per post: blog_id, domain, post_id, post_type, post_status,
 post_title, slug, original_url, then one column per detector category).
+`excluded_post_statuses` config is merged over a built-in trash/auto-draft
+exclusion (`postStatusClause()`).
+
+Gotcha: MySQL caps a prepared statement at ~65535 placeholders — always
+chunk `IN (...)` ID lists (see `fetchMetaForPosts()`, 5000/batch); a single
+unbounded IN over a large site's posts fails outright.
 
 Detectors (`src/ContentAudit/Detectors/`):
 

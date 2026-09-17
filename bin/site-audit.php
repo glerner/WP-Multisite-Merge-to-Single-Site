@@ -53,6 +53,7 @@ use MergeMultisite\Db\ConnectionException;
 use MergeMultisite\Migration\PluginFootprintDetector;
 use MergeMultisite\Migration\PluginInventory;
 use MergeMultisite\Migration\SiteSelector;
+use MergeMultisite\Migration\TermMergeResolver;
 use MergeMultisite\Report\ContentAuditReportWriter;
 use MergeMultisite\Report\NeedsReviewReportWriter;
 use MergeMultisite\Support\CliArguments;
@@ -127,7 +128,7 @@ if ( $searchOption !== null ) {
 	);
 	$logger->info( sprintf( 'Searching %d site(s) for: %s', count( $sites ), implode( ', ', $needles ) ) );
 
-	$hits = $scanner->searchContent( $source, $sites, $needles, $postTypes, $config->excludedPostTypes );
+	$hits = $scanner->searchContent( $source, $sites, $needles, $postTypes, $config->excludedPostTypes, $config->excludedPostStatuses );
 
 	$outputPath = $projectRoot . '/var/reports/search-' . date( 'Ymd-His' ) . '.csv';
 	if ( ! is_dir( dirname( $outputPath ) ) ) {
@@ -180,10 +181,37 @@ $detectors = array(
 	new NeedsReviewDetector(),
 );
 
+// Resolve the cross-site term merge up front so nav-menu findings can
+// show "category \"hello\" (#4) -> \"Hello\"" -- what a site's own term
+// becomes on the merged destination -- not just a site-local ID.
+$termMergeTargets = array();
+$termCandidates = array();
+foreach ( $sites as $site ) {
+	$termsTable = $source->siteTable( 'terms', $site->blogId );
+	$taxonomyTable = $source->siteTable( 'term_taxonomy', $site->blogId );
+	foreach (
+		$source->fetchAll(
+			"SELECT t.term_id, t.name AS label, tt.taxonomy, tt.count AS usage_count
+             FROM {$termsTable} t
+             INNER JOIN {$taxonomyTable} tt ON tt.term_id = t.term_id"
+		) as $term
+	) {
+		$termCandidates[] = array(
+			'taxonomy'    => (string) $term['taxonomy'],
+			'label'       => (string) $term['label'],
+			'usage_count' => (int) $term['usage_count'],
+			'site_id'     => $site->blogId,
+		);
+	}
+}
+foreach ( ( new TermMergeResolver() )->resolve( $termCandidates ) as $key => $group ) {
+	$termMergeTargets[ $key ] = $group->canonicalLabel;
+}
+
 $logger->info( sprintf( 'Scanning %d site(s) with %d detector(s)...', count( $sites ), count( $detectors ) ) );
 
-$scanner = new PostScanner( $detectors );
-$details = $scanner->scanWithDetails( $source, $sites, $postTypes, $config->excludedPostTypes );
+$scanner = new PostScanner( $detectors, $termMergeTargets );
+$details = $scanner->scanWithDetails( $source, $sites, $postTypes, $config->excludedPostTypes, $config->excludedPostStatuses );
 $rows = array_map( static fn ( array $d ): ContentAuditRow => $d['row'], $details );
 
 // Which installed plugins the detected content signals actually map
@@ -191,13 +219,17 @@ $rows = array_map( static fn ( array $d ): ContentAuditRow => $d['row'], $detail
 // the summary's "can I uninstall this?" section. Network-active
 // plugins count as active on every scanned site.
 $inventory = PluginInventory::fromUploadsPath( $config->source->uploadsPath );
+// Keyed by blog_id so a plugin that is BOTH network-active and
+// site-active on the same blog records that site once, not twice.
 $activeBySlug = array();
 foreach ( $inventory->networkActiveSlugs( $source ) as $slug ) {
-	$activeBySlug[ $slug ] = array_map( static fn ( $site ): int => $site->blogId, $sites );
+	foreach ( $sites as $site ) {
+		$activeBySlug[ $slug ][ $site->blogId ] = $site->blogId;
+	}
 }
 foreach ( $sites as $site ) {
 	foreach ( $inventory->activeSlugsForSite( $source, $site->blogId ) as $slug ) {
-		$activeBySlug[ $slug ][] = $site->blogId;
+		$activeBySlug[ $slug ][ $site->blogId ] = $site->blogId;
 	}
 }
 $footprintDetector = new PluginFootprintDetector();
@@ -228,7 +260,8 @@ $paths = ( new ContentAuditReportWriter() )->write(
 	$categories,
 	$projectRoot . '/var/reports',
 	'site-audit-' . date( 'Ymd-His' ),
-	$pluginUsage
+	$pluginUsage,
+	$config->spreadsheetFormat
 );
 
 // The "needs review" CSV: only pages carrying a page-builder /
@@ -249,12 +282,14 @@ $needsReviewCount = count(
 );
 
 $logger->info( sprintf( 'Scanned %d post(s)/page(s).', count( $rows ) ) );
-$logger->info( sprintf( 'CSV: %s', $paths['csv'] ) );
+if ( $paths['csv'] !== null ) {
+	$logger->info( sprintf( 'CSV: %s', $paths['csv'] ) );
+}
 $logger->info( sprintf( 'JSON: %s', $paths['json'] ) );
 $logger->info( sprintf( 'Summary: %s', $paths['summary'] ) );
 if ( $paths['xlsx'] !== null ) {
 	$logger->info( sprintf( 'XLSX: %s', $paths['xlsx'] ) );
-} else {
+} elseif ( $config->spreadsheetFormat !== 'csv' ) {
 	$logger->info( 'XLSX skipped: install ext-zip (sudo apt install php8.4-zip php8.4-gd) for spreadsheet output.' );
 }
 $logger->info( sprintf( '%d page(s) likely needing manual review after migration. CSV: %s', $needsReviewCount, $needsReviewPath ) );

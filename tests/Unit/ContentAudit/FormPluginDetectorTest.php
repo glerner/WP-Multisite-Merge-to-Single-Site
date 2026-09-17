@@ -53,6 +53,28 @@ final class FormPluginDetectorTest extends TestCase {
 		self::assertSame( array( 'HTML form (action: "https://example.com/submit")' ), $detector->detect( $post ) );
 	}
 
+	public function testLabelsKnownExternalProcessorByFormAction(): void {
+		$detector = new FormPluginDetector();
+
+		// Infinite Responder: a standalone pre-WordPress newsletter CGI
+		// embedded as a pasted <form action="...infiniteresponder/s.php">.
+		$post = new ScannedPost(
+			1,
+			1,
+			'page',
+			'publish',
+			'contact',
+			'Contact',
+			'<form action="http://example.com/infiniteresponder/s.php"><input type="email"></form>',
+			array()
+		);
+
+		self::assertSame(
+			array( 'HTML form (Infinite Responder; action: "http://example.com/infiniteresponder/s.php")' ),
+			$detector->detect( $post )
+		);
+	}
+
 	public function testReportsSamePageAndMissingFormActions(): void {
 		$detector = new FormPluginDetector();
 

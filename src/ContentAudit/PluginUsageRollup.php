@@ -276,12 +276,6 @@ final class PluginUsageRollup {
 	private function resolveEntity( string $token, array $installedSlugs ): ?array {
 		$condensed = self::condense( $token );
 
-		foreach ( self::NOT_A_PLUGIN as $notPlugin ) {
-			if ( $condensed === $notPlugin || str_starts_with( $condensed, $notPlugin ) ) {
-				return null;
-			}
-		}
-
 		$bestPrefix = '';
 		foreach ( self::SIGNAL_MAP as $prefix => $definition ) {
 			if ( ( $condensed === $prefix || str_starts_with( $condensed, $prefix ) ) && strlen( $prefix ) > strlen( $bestPrefix ) ) {
@@ -297,7 +291,10 @@ final class PluginUsageRollup {
 
 		// No alias: an installed slug whose condensed form equals or
 		// prefixes the token (e.g. token "woocommercecart" matches slug
-		// "woocommerce"). Longest match wins.
+		// "woocommerce"). Longest match wins. This runs BEFORE the
+		// NOT_A_PLUGIN check: a real installed plugin whose slug starts
+		// with a core-looking token (e.g. "gallery-pro" starting with
+		// "gallery") must not be discarded as platform output.
 		$bestSlug = null;
 		foreach ( $installedSlugs as $slug ) {
 			$condensedSlug = self::condense( $slug );
@@ -307,7 +304,17 @@ final class PluginUsageRollup {
 			}
 		}
 
-		return array( $bestSlug ?? $token, $bestSlug );
+		if ( $bestSlug !== null ) {
+			return array( $bestSlug, $bestSlug );
+		}
+
+		foreach ( self::NOT_A_PLUGIN as $notPlugin ) {
+			if ( $condensed === $notPlugin || str_starts_with( $condensed, $notPlugin ) ) {
+				return null;
+			}
+		}
+
+		return array( $token, null );
 	}
 
 	/**

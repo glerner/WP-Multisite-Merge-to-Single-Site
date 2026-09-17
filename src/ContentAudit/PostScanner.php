@@ -19,23 +19,29 @@ final class PostScanner {
 
 	/**
 	 * @param ContentDetectorInterface[] $detectors
+	 * @param array<string, string>      $termMergeTargets "taxonomy|lowercase-name" => canonical
+	 *                                    label after the cross-site term merge (see
+	 *                                    TermMergeResolver); passed through to every
+	 *                                    ScannedPost.
 	 */
-	public function __construct( private readonly array $detectors ) {
+	public function __construct( private readonly array $detectors, private readonly array $termMergeTargets = array() ) {
 	}
 
 	/**
 	 * @param Site[]   $sites
-	 * @param string[] $postTypes         Post types to include; empty array means "all".
-	 * @param string[] $excludedPostTypes Post types to skip when $postTypes is empty
-	 *                                    (an explicit include list wins over exclusions).
+	 * @param string[] $postTypes            Post types to include; empty array means "all".
+	 * @param string[] $excludedPostTypes    Post types to skip when $postTypes is empty
+	 *                                       (an explicit include list wins over exclusions).
+	 * @param string[] $excludedPostStatuses Post statuses to skip; merged over the
+	 *                                       built-in trash/auto-draft exclusion.
 	 *
 	 * @return ContentAuditRow[]
 	 */
-	public function scan( Connection $connection, array $sites, array $postTypes = array(), array $excludedPostTypes = array() ): array {
+	public function scan( Connection $connection, array $sites, array $postTypes = array(), array $excludedPostTypes = array(), array $excludedPostStatuses = array() ): array {
 		$rows = array();
 
 		foreach ( $sites as $site ) {
-			foreach ( $this->scanSite( $connection, $site, $postTypes, $excludedPostTypes ) as $row ) {
+			foreach ( $this->scanSite( $connection, $site, $postTypes, $excludedPostTypes, $excludedPostStatuses ) as $row ) {
 				$rows[] = $row;
 			}
 		}
@@ -50,17 +56,19 @@ final class PostScanner {
 	 * access it without a second database pass.
 	 *
 	 * @param Site[]   $sites
-	 * @param string[] $postTypes         Post types to include; empty array means "all".
-	 * @param string[] $excludedPostTypes Post types to skip when $postTypes is empty
-	 *                                    (an explicit include list wins over exclusions).
+	 * @param string[] $postTypes            Post types to include; empty array means "all".
+	 * @param string[] $excludedPostTypes    Post types to skip when $postTypes is empty
+	 *                                       (an explicit include list wins over exclusions).
+	 * @param string[] $excludedPostStatuses Post statuses to skip; merged over the
+	 *                                       built-in trash/auto-draft exclusion.
 	 *
 	 * @return array<int, array{row: ContentAuditRow, post: ScannedPost}>
 	 */
-	public function scanWithDetails( Connection $connection, array $sites, array $postTypes = array(), array $excludedPostTypes = array() ): array {
+	public function scanWithDetails( Connection $connection, array $sites, array $postTypes = array(), array $excludedPostTypes = array(), array $excludedPostStatuses = array() ): array {
 		$results = array();
 
 		foreach ( $sites as $site ) {
-			foreach ( $this->scanSiteWithDetails( $connection, $site, $postTypes, $excludedPostTypes ) as $result ) {
+			foreach ( $this->scanSiteWithDetails( $connection, $site, $postTypes, $excludedPostTypes, $excludedPostStatuses ) as $result ) {
 				$results[] = $result;
 			}
 		}
@@ -75,19 +83,21 @@ final class PostScanner {
 	 * find-anything search rather than a detector pass.
 	 *
 	 * @param Site[]   $sites
-	 * @param string[] $needles           Case-insensitive terms to search for
-	 *                                    in post_content / post_title.
-	 * @param string[] $postTypes         Post types to include; empty array means "all".
-	 * @param string[] $excludedPostTypes Post types to skip when $postTypes is empty
-	 *                                    (an explicit include list wins over exclusions).
+	 * @param string[] $needles              Case-insensitive terms to search for
+	 *                                       in post_content / post_title.
+	 * @param string[] $postTypes            Post types to include; empty array means "all".
+	 * @param string[] $excludedPostTypes    Post types to skip when $postTypes is empty
+	 *                                       (an explicit include list wins over exclusions).
+	 * @param string[] $excludedPostStatuses Post statuses to skip; merged over the
+	 *                                       built-in trash/auto-draft exclusion.
 	 *
 	 * @return array<int, array{blog_id:int, post_id:int, post_type:string, post_status:string, post_title:string, post_name:string, matched_needle:string}>
 	 */
-	public function searchContent( Connection $connection, array $sites, array $needles, array $postTypes = array(), array $excludedPostTypes = array() ): array {
+	public function searchContent( Connection $connection, array $sites, array $needles, array $postTypes = array(), array $excludedPostTypes = array(), array $excludedPostStatuses = array() ): array {
 		$hits = array();
 
 		foreach ( $sites as $site ) {
-			foreach ( $this->searchSite( $connection, $site, $needles, $postTypes, $excludedPostTypes ) as $hit ) {
+			foreach ( $this->searchSite( $connection, $site, $needles, $postTypes, $excludedPostTypes, $excludedPostStatuses ) as $hit ) {
 				$hits[] = $hit;
 			}
 		}
@@ -101,11 +111,11 @@ final class PostScanner {
 	 *
 	 * @return array<int, array{blog_id:int, post_id:int, post_type:string, post_status:string, post_title:string, post_name:string, matched_needle:string}>
 	 */
-	private function searchSite( Connection $connection, Site $site, array $needles, array $postTypes, array $excludedPostTypes = array() ): array {
+	private function searchSite( Connection $connection, Site $site, array $needles, array $postTypes, array $excludedPostTypes = array(), array $excludedPostStatuses = array() ): array {
 		$postsTable = $connection->siteTable( 'posts', $site->blogId );
 
 		$params = array();
-		$where = "post_status NOT IN ('trash', 'auto-draft')" . $this->postTypeClause( $postTypes, $excludedPostTypes, $params );
+		$where = $this->postStatusClause( $excludedPostStatuses, $params ) . $this->postTypeClause( $postTypes, $excludedPostTypes, $params );
 
 		$posts = $connection->fetchAll(
 			"SELECT ID, post_type, post_status, post_title, post_name, post_content FROM {$postsTable} WHERE {$where}",
@@ -150,9 +160,9 @@ final class PostScanner {
 	 *
 	 * @return ContentAuditRow[]
 	 */
-	private function scanSite( Connection $connection, Site $site, array $postTypes, array $excludedPostTypes = array() ): array {
+	private function scanSite( Connection $connection, Site $site, array $postTypes, array $excludedPostTypes = array(), array $excludedPostStatuses = array() ): array {
 		$rows = array();
-		foreach ( $this->scanSiteWithDetails( $connection, $site, $postTypes, $excludedPostTypes ) as $result ) {
+		foreach ( $this->scanSiteWithDetails( $connection, $site, $postTypes, $excludedPostTypes, $excludedPostStatuses ) as $result ) {
 			$rows[] = $result['row'];
 		}
 
@@ -165,12 +175,12 @@ final class PostScanner {
 	 *
 	 * @return array<int, array{row: ContentAuditRow, post: ScannedPost}>
 	 */
-	private function scanSiteWithDetails( Connection $connection, Site $site, array $postTypes, array $excludedPostTypes = array() ): array {
+	private function scanSiteWithDetails( Connection $connection, Site $site, array $postTypes, array $excludedPostTypes = array(), array $excludedPostStatuses = array() ): array {
 		$postsTable = $connection->siteTable( 'posts', $site->blogId );
 		$postMetaTable = $connection->siteTable( 'postmeta', $site->blogId );
 
 		$params = array();
-		$where = "post_status NOT IN ('trash', 'auto-draft')" . $this->postTypeClause( $postTypes, $excludedPostTypes, $params );
+		$where = $this->postStatusClause( $excludedPostStatuses, $params ) . $this->postTypeClause( $postTypes, $excludedPostTypes, $params );
 
 		$posts = $connection->fetchAll(
 			"SELECT ID, post_type, post_status, post_name, post_title, post_content FROM {$postsTable} WHERE {$where}",
@@ -182,6 +192,19 @@ final class PostScanner {
 		}
 
 		$metaByPost = $this->fetchMetaForPosts( $connection, $postMetaTable, array_column( $posts, 'ID' ) );
+
+		// Site-local lookup maps so detectors can render names, not
+		// bare IDs: term/post IDs are per-site auto-increments, so
+		// "term #4" on two different sites is NOT the same term.
+		$termsTable = $connection->siteTable( 'terms', $site->blogId );
+		$termNames = array();
+		foreach ( $connection->fetchAll( "SELECT term_id, name FROM {$termsTable}" ) as $term ) {
+			$termNames[ (int) $term['term_id'] ] = (string) $term['name'];
+		}
+		$postTitles = array();
+		foreach ( $posts as $post ) {
+			$postTitles[ (int) $post['ID'] ] = (string) $post['post_title'];
+		}
 
 		$results = array();
 		foreach ( $posts as $post ) {
@@ -196,6 +219,9 @@ final class PostScanner {
 				postTitle: (string) $post['post_title'],
 				content: (string) $post['post_content'],
 				meta: $metaByPost[ $postId ] ?? array(),
+				termNames: $termNames,
+				postTitles: $postTitles,
+				termMergeTargets: $this->termMergeTargets,
 			);
 
 			$categoryFindings = array();
@@ -222,6 +248,27 @@ final class PostScanner {
 		}
 
 		return $results;
+	}
+
+	/**
+	 * Builds the post_status WHERE fragment: 'trash' and 'auto-draft'
+	 * are always excluded (never real content), plus whatever
+	 * excluded_post_statuses config adds (e.g. 'draft', 'inherit').
+	 *
+	 * @param string[]              $excludedPostStatuses
+	 * @param array<string, string> $params Bound parameters, appended.
+	 */
+	private function postStatusClause( array $excludedPostStatuses, array &$params ): string {
+		$statuses = array_values( array_unique( array_merge( array( 'trash', 'auto-draft' ), $excludedPostStatuses ) ) );
+
+		$placeholders = array();
+		foreach ( $statuses as $index => $status ) {
+			$key = 'post_status_' . $index;
+			$placeholders[] = ':' . $key;
+			$params[ $key ] = $status;
+		}
+
+		return sprintf( 'post_status NOT IN (%s)', implode( ', ', $placeholders ) );
 	}
 
 	/**
@@ -258,26 +305,28 @@ final class PostScanner {
 	 * @return array<int, array<string, string[]>>
 	 */
 	private function fetchMetaForPosts( Connection $connection, string $postMetaTable, array $postIds ): array {
-		if ( $postIds === array() ) {
-			return array();
-		}
-
-		$placeholders = array();
-		$params = array();
-		foreach ( $postIds as $index => $postId ) {
-			$key = 'post_id_' . $index;
-			$placeholders[] = ':' . $key;
-			$params[ $key ] = $postId;
-		}
-
-		$rows = $connection->fetchAll(
-			"SELECT post_id, meta_key, meta_value FROM {$postMetaTable} WHERE post_id IN (" . implode( ', ', $placeholders ) . ')',
-			$params
-		);
-
 		$metaByPost = array();
-		foreach ( $rows as $row ) {
-			$metaByPost[ (int) $row['post_id'] ][ (string) $row['meta_key'] ][] = (string) $row['meta_value'];
+
+		// Chunked: MySQL caps a prepared statement at 65535
+		// placeholders, so a single IN() over a large site's posts
+		// would fail outright. Always chunk ID lists like this.
+		foreach ( array_chunk( $postIds, 5000 ) as $chunk ) {
+			$placeholders = array();
+			$params = array();
+			foreach ( $chunk as $index => $postId ) {
+				$key = 'post_id_' . $index;
+				$placeholders[] = ':' . $key;
+				$params[ $key ] = $postId;
+			}
+
+			$rows = $connection->fetchAll(
+				"SELECT post_id, meta_key, meta_value FROM {$postMetaTable} WHERE post_id IN (" . implode( ', ', $placeholders ) . ')',
+				$params
+			);
+
+			foreach ( $rows as $row ) {
+				$metaByPost[ (int) $row['post_id'] ][ (string) $row['meta_key'] ][] = (string) $row['meta_value'];
+			}
 		}
 
 		return $metaByPost;

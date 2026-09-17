@@ -42,7 +42,19 @@ final class GalleryDetector implements ContentDetectorInterface {
 	private const META_SIGNATURES = array(
 		'Elementor Gallery' => array( '_elementor_data', '"widgetType":"gallery"' ),
 		'Elementor Image Gallery' => array( '_elementor_data', '"widgetType":"image-gallery"' ),
-		'Beaver Builder Gallery' => array( '_fl_builder_data', '"type":"gallery"' ),
+	);
+
+	/**
+	 * Page builders that store their layout as PHP-SERIALIZED data in
+	 * postmeta rather than JSON: map of plugin label => [meta key,
+	 * module type to look for]. Beaver Builder's _fl_builder_data is a
+	 * serialized tree of node objects whose module nodes carry
+	 * ->settings->type (e.g. 'gallery', 'photos').
+	 *
+	 * @var array<string, array{0: string, 1: string}>
+	 */
+	private const SERIALIZED_META_SIGNATURES = array(
+		'Beaver Builder Gallery' => array( '_fl_builder_data', 'gallery' ),
 	);
 
 	public function category(): string {
@@ -68,6 +80,47 @@ final class GalleryDetector implements ContentDetectorInterface {
 			}
 		}
 
+		foreach ( self::SERIALIZED_META_SIGNATURES as $label => list( $metaKey, $moduleType ) ) {
+			$value = $post->metaValue( $metaKey );
+			if ( $value !== null && $this->serializedDataHasModuleType( $value, $moduleType ) ) {
+				$found[] = $label;
+			}
+		}
+
 		return $found;
+	}
+
+	/**
+	 * Whether a PHP-serialized builder layout contains a node whose
+	 * 'type' equals $moduleType -- walks node objects and their
+	 * ->settings so it matches both a module's own type and the module
+	 * type nested in its settings.
+	 */
+	private function serializedDataHasModuleType( string $serialized, string $moduleType ): bool {
+		// Only stdClass is materialized; other classes become
+		// __PHP_Incomplete_Class, whose props get_object_vars() still
+		// exposes -- so the walk below inspects them either way.
+		$data = @unserialize( $serialized, array( 'allowed_classes' => array( 'stdClass' ) ) );
+		if ( ! is_array( $data ) && ! is_object( $data ) ) {
+			return false;
+		}
+
+		$stack = array( $data );
+		while ( $stack !== array() ) {
+			$node = array_pop( $stack );
+			$values = is_object( $node ) ? get_object_vars( $node ) : $node;
+
+			if ( ( $values['type'] ?? null ) === $moduleType ) {
+				return true;
+			}
+
+			foreach ( $values as $value ) {
+				if ( is_array( $value ) || is_object( $value ) ) {
+					$stack[] = $value;
+				}
+			}
+		}
+
+		return false;
 	}
 }

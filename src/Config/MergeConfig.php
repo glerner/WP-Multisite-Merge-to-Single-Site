@@ -40,6 +40,10 @@ final class MergeConfig {
 	 * @param string[]                             $ignoredShortcodes Extra shortcode tags the site-audit
 	 *                                                              should not report (from
 	 *                                                              shortcode-ignore.php).
+	 * @param string                               $spreadsheetFormat  site-audit spreadsheet output:
+	 *                                                              'xlsx' (default; falls back to CSV
+	 *                                                              when ext-zip is missing), 'csv', or
+	 *                                                              'both'.
 	 */
 	public function __construct(
 		public readonly DatabaseConfig $source,
@@ -59,6 +63,7 @@ final class MergeConfig {
 		public readonly array $suppressions = array(),
 		public readonly array $mediaSearchPaths = array(),
 		public readonly array $ignoredShortcodes = array(),
+		public readonly string $spreadsheetFormat = 'xlsx',
 	) {
 	}
 

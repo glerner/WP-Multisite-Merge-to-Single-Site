@@ -122,6 +122,23 @@ final class PluginUsageRollupTest extends TestCase {
 		self::assertSame( array(), $result['not_installed'] );
 	}
 
+	public function testInstalledPluginWhoseLabelStartsWithCoreTokenIsNotDropped(): void {
+		$rollup = new PluginUsageRollup();
+
+		// "Gallery Pro" condenses to "gallerypro", which starts with the
+		// NOT_A_PLUGIN token "gallery" -- but the plugin IS installed, so
+		// it must land in "used", not be silently discarded.
+		$rows = array(
+			$this->makeRow( 20, array( 'shortcodes' => array( 'gallery_pro_album' ) ) ),
+		);
+
+		$result = $rollup->build( $rows, array( 'gallery-pro' ), array( 'gallery-pro' => array( 20 ) ) );
+
+		self::assertArrayHasKey( 'gallery-pro', $result['used'] );
+		self::assertSame( array( 20 ), $result['used']['gallery-pro']['sites'] );
+		self::assertArrayNotHasKey( 'gallery-pro', $result['not_detected'] );
+	}
+
 	public function testSlugPrefixMatchWithoutAlias(): void {
 		$rollup = new PluginUsageRollup();
 

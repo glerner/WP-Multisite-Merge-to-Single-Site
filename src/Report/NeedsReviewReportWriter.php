@@ -102,7 +102,7 @@ final class NeedsReviewReportWriter {
 					(string) $row->postId,
 					$row->postType,
 					$row->postStatus,
-					$row->categoryFindings['post_title'] ?? '',
+					$row->postTitle,
 					implode( '; ', $needsReview ),
 					implode( "\n", $rawLines ),
 				),

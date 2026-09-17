@@ -18,6 +18,12 @@ use MergeMultisite\ContentAudit\ScannedPost;
  * URLs need the domain swapped. This detector exists to make that
  * remapping work visible per item.
  *
+ * Object IDs are site-local (per-site auto-increment), so labels show
+ * the object's NAME as well as its ID -- "category \"Hello\" (#4)" --
+ * and for taxonomy items the post-merge canonical label too, e.g.
+ * 'category "hello" (#4) -> "Hello"' when a case-variant gets folded
+ * into a different canonical spelling.
+ *
  * @package MergeMultisite
  */
 final class NavMenuItemDetector implements ContentDetectorInterface {
@@ -39,11 +45,46 @@ final class NavMenuItemDetector implements ContentDetectorInterface {
 		return array(
 			match ( $type ) {
 				'custom' => 'custom: ' . $url,
-				'post_type' => sprintf( '%s #%s', $object !== '' ? $object : 'post', $objectId ),
-				'taxonomy' => sprintf( '%s #%s', $object !== '' ? $object : 'term', $objectId ),
+				'post_type' => $this->objectLabel( $object !== '' ? $object : 'post', $objectId, $post->postTitles ),
+				'taxonomy' => $this->taxonomyLabel( $object !== '' ? $object : 'term', $objectId, $post ),
 				'post_type_archive' => 'archive: ' . $object,
 				default => $type !== '' ? $type : 'unknown menu item type',
 			},
 		);
+	}
+
+	/**
+	 * Renders a linked object as `type "Name" (#id)` when the name is
+	 * known, `type #id` when it isn't (target outside the scanned set
+	 * or already deleted).
+	 *
+	 * @param array<int, string> $names Site-local object ID => name.
+	 */
+	private function objectLabel( string $kind, string $objectId, array $names ): string {
+		$name = $names[ (int) $objectId ] ?? null;
+
+		return $name !== null
+			? sprintf( '%s "%s" (#%s)', $kind, $name, $objectId )
+			: sprintf( '%s #%s', $kind, $objectId );
+	}
+
+	/**
+	 * Like objectLabel(), but appends the cross-site merge target when
+	 * the term's name is a case-variant that folds into a different
+	 * canonical label: `category "hello" (#4) -> "Hello"`.
+	 */
+	private function taxonomyLabel( string $taxonomy, string $objectId, ScannedPost $post ): string {
+		$label = $this->objectLabel( $taxonomy, $objectId, $post->termNames );
+
+		$name = $post->termNames[ (int) $objectId ] ?? null;
+		if ( $name === null ) {
+			return $label;
+		}
+
+		$canonical = $post->termMergeTargets[ $taxonomy . '|' . strtolower( trim( $name ) ) ] ?? null;
+
+		return $canonical !== null && $canonical !== $name
+			? sprintf( '%s -> "%s"', $label, $canonical )
+			: $label;
 	}
 }

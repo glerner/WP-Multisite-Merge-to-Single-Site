@@ -68,6 +68,69 @@ final class NavMenuItemDetectorTest extends TestCase {
 		self::assertSame( array( 'archive: product' ), $detector->detect( $archive ) );
 	}
 
+	public function testTermAndPostNamesAreShownWhenKnown(): void {
+		$detector = new NavMenuItemDetector();
+
+		$taxonomy = new ScannedPost(
+			1,
+			1,
+			'nav_menu_item',
+			'publish',
+			'item',
+			'Item',
+			'',
+			array(
+				'_menu_item_type'      => array( 'taxonomy' ),
+				'_menu_item_object'    => array( 'category' ),
+				'_menu_item_object_id' => array( '45' ),
+			),
+			array( 45 => 'Hello' )
+		);
+		$page     = new ScannedPost(
+			1,
+			1,
+			'nav_menu_item',
+			'publish',
+			'item',
+			'Item',
+			'',
+			array(
+				'_menu_item_type'      => array( 'post_type' ),
+				'_menu_item_object'    => array( 'page' ),
+				'_menu_item_object_id' => array( '123' ),
+			),
+			array(),
+			array( 123 => 'About Us' )
+		);
+
+		self::assertSame( array( 'category "Hello" (#45)' ), $detector->detect( $taxonomy ) );
+		self::assertSame( array( 'page "About Us" (#123)' ), $detector->detect( $page ) );
+	}
+
+	public function testCaseVariantTermShowsMergeTarget(): void {
+		$detector = new NavMenuItemDetector();
+
+		$post = new ScannedPost(
+			1,
+			1,
+			'nav_menu_item',
+			'publish',
+			'item',
+			'Item',
+			'',
+			array(
+				'_menu_item_type'      => array( 'taxonomy' ),
+				'_menu_item_object'    => array( 'category' ),
+				'_menu_item_object_id' => array( '45' ),
+			),
+			array( 45 => 'hello' ),
+			array(),
+			array( 'category|hello' => 'Hello' )
+		);
+
+		self::assertSame( array( 'category "hello" (#45) -> "Hello"' ), $detector->detect( $post ) );
+	}
+
 	public function testMissingTypeIsReportedAsUnknown(): void {
 		$detector = new NavMenuItemDetector();
 

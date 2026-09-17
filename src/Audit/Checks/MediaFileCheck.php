@@ -90,9 +90,16 @@ final class MediaFileCheck implements AuditCheckInterface {
 			}
 		}
 
+		// Fingerprint each file exactly once -- hashing is the dominant
+		// cost of this check, and two consumers below need the same map.
+		$fingerprints = array();
+		foreach ( $found as $index => $file ) {
+			$fingerprints[ $index ] = $this->hasher->fingerprint( $file['path'] )->toKey();
+		}
+
 		$findings = array( ...$findings, ...$this->checkMissingFiles( $missing ) );
-		$findings = array( ...$findings, ...$this->checkFilenameCollisions( $found ) );
-		$findings = array( ...$findings, ...$this->checkDuplicateContentDifferentNames( $found ) );
+		$findings = array( ...$findings, ...$this->checkFilenameCollisions( $found, $fingerprints ) );
+		$findings = array( ...$findings, ...$this->checkDuplicateContentDifferentNames( $found, $fingerprints ) );
 
 		return $findings;
 	}
@@ -162,13 +169,14 @@ final class MediaFileCheck implements AuditCheckInterface {
 	 * and "identical content" as info, in two clearly separate lists.
 	 *
 	 * @param array<int, array{blog_id:int, post_id:int, relative:string, path:string}> $found
+	 * @param array<int, string>                                                        $fingerprints Index-aligned with $found (computed once in run()).
 	 *
 	 * @return AuditFinding[]
 	 */
-	private function checkFilenameCollisions( array $found ): array {
+	private function checkFilenameCollisions( array $found, array $fingerprints ): array {
 		$byBasename = array();
-		foreach ( $found as $file ) {
-			$byBasename[ basename( $file['path'] ) ][] = $file;
+		foreach ( $found as $index => $file ) {
+			$byBasename[ basename( $file['path'] ) ][ $index ] = $file;
 		}
 
 		$errors = array();
@@ -181,12 +189,9 @@ final class MediaFileCheck implements AuditCheckInterface {
 				continue;
 			}
 
-			$fingerprints = array();
-			foreach ( $group as $file ) {
-				$fingerprints[] = $this->hasher->fingerprint( $file['path'] )->toKey();
-			}
-
-			$uniqueFingerprints = array_unique( $fingerprints );
+			$uniqueFingerprints = array_unique(
+				array_map( static fn ( int $index ): string => $fingerprints[ $index ], array_keys( $group ) )
+			);
 
 			$context = array(
 				'basename' => $basename,
@@ -232,14 +237,14 @@ final class MediaFileCheck implements AuditCheckInterface {
 	 * Purely informational -- not auto-merged (PLAN.md §7.2).
 	 *
 	 * @param array<int, array{blog_id:int, post_id:int, relative:string, path:string}> $found
+	 * @param array<int, string>                                                        $fingerprints Index-aligned with $found (computed once in run()).
 	 *
 	 * @return AuditFinding[]
 	 */
-	private function checkDuplicateContentDifferentNames( array $found ): array {
+	private function checkDuplicateContentDifferentNames( array $found, array $fingerprints ): array {
 		$byFingerprint = array();
-		foreach ( $found as $file ) {
-			$key = $this->hasher->fingerprint( $file['path'] )->toKey();
-			$byFingerprint[ $key ][] = $file;
+		foreach ( $found as $index => $file ) {
+			$byFingerprint[ $fingerprints[ $index ] ][] = $file;
 		}
 
 		$findings = array();

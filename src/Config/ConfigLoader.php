@@ -58,6 +58,13 @@ final class ConfigLoader {
 		$termOverridesRaw = $this->optionalArrayFile( 'term-overrides.php' );
 		$termOverrides = is_array( $termOverridesRaw['taxonomy'] ?? null ) ? $termOverridesRaw['taxonomy'] : array();
 
+		$spreadsheetFormat = (string) ( $config['spreadsheet_format'] ?? 'xlsx' );
+		if ( ! in_array( $spreadsheetFormat, array( 'xlsx', 'csv', 'both' ), true ) ) {
+			throw new ConfigException(
+				sprintf( 'config.php "spreadsheet_format" must be "xlsx", "csv", or "both" (got "%s").', $spreadsheetFormat )
+			);
+		}
+
 		return new MergeConfig(
 			source: $source,
 			destination: $destination,
@@ -89,6 +96,7 @@ final class ConfigLoader {
 				static fn ( $tag ): string => strtolower( trim( (string) $tag, " \t\n\r\0\x0B[]" ) ),
 				array_values( array_filter( $this->optionalArrayFile( 'shortcode-ignore.php' ), 'is_string' ) )
 			),
+			spreadsheetFormat: $spreadsheetFormat,
 		);
 	}
 

@@ -342,8 +342,10 @@ final class PluginDataCheck implements AuditCheckInterface {
 			"wp_options data exists for plugins NOT INSTALLED on that site (likely leftover from removed plugins).\n"
 			. "  These plugins already have option-keys.php rules. To keep the data, leave the rule as 'include';\n"
 			. "  to never migrate it, change its 'mode' to 'exclude' there and this row stops appearing.\n"
-			. "  (To hide one row without deciding, add to 'suppressions' in config.php:\n"
-			. "  ['check' => 'plugin-data.orphaned-data', 'plugin' => '<slug>'])\n"
+			. "  (To hide the whole table without deciding, add to 'suppressions' in config.php:\n"
+			. "  ['check' => 'plugin-data.orphaned-data'] -- this is one aggregated finding covering\n"
+			. "  all patterns, so there is no per-row suppression; use the plugin's 'exclude' mode\n"
+			. "  for per-plugin control.)\n"
 			. "\n"
 			. implode( "\n", $table ),
 			array( 'rows' => $rows )

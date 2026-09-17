@@ -62,6 +62,22 @@ final class FormPluginDetector implements ContentDetectorInterface {
 		'Elementor Pro Form' => array( '_elementor_data', '"widgetType":"form"' ),
 	);
 
+	/**
+	 * Known non-WordPress form processors, recognized by their action
+	 * URL: label => regex patterns matched against the action target.
+	 * These are pasted/hand-coded embeds pointing at external scripts,
+	 * so they only surface through the HTML-form fallback below. The
+	 * label keeps the "HTML form" prefix on purpose -- the plugin-usage
+	 * rollup buckets anything starting that way as "not a plugin".
+	 *
+	 * @var array<string, string[]>
+	 */
+	private const KNOWN_ACTION_SIGNATURES = array(
+		// Standalone newsletter/mail-list CGI (pre-WordPress era);
+		// embedded as <form action=".../infiniteresponder/s.php">.
+		'Infinite Responder' => array( 'infiniteresponder' ),
+	);
+
 	public function category(): string {
 		return 'form_plugin';
 	}
@@ -93,11 +109,30 @@ final class FormPluginDetector implements ContentDetectorInterface {
 		// endpoint, a mailto:, a self-processing PHP file, ...).
 		if ( $found === array() ) {
 			foreach ( $this->formActions( $post->content ) as $action ) {
-				$found[] = sprintf( 'HTML form (action: %s)', $action );
+				$known = $this->knownActionLabel( $action );
+				$found[] = $known !== null
+					? sprintf( 'HTML form (%s; action: %s)', $known, $action )
+					: sprintf( 'HTML form (action: %s)', $action );
 			}
 		}
 
 		return $found;
+	}
+
+	/**
+	 * The KNOWN_ACTION_SIGNATURES label for a form action target, or
+	 * null when it is not a recognized external processor.
+	 */
+	private function knownActionLabel( string $action ): ?string {
+		foreach ( self::KNOWN_ACTION_SIGNATURES as $label => $patterns ) {
+			foreach ( $patterns as $pattern ) {
+				if ( preg_match( '/' . $pattern . '/i', $action ) === 1 ) {
+					return $label;
+				}
+			}
+		}
+
+		return null;
 	}
 
 	/**
