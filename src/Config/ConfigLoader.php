@@ -97,6 +97,7 @@ final class ConfigLoader {
 				array_values( array_filter( $this->optionalArrayFile( 'shortcode-ignore.php' ), 'is_string' ) )
 			),
 			spreadsheetFormat: $spreadsheetFormat,
+			mainSite: isset( $config['main_site'] ) ? (int) $config['main_site'] : null,
 		);
 	}
 

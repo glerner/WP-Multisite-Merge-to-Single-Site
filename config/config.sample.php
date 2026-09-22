@@ -143,6 +143,17 @@ return array(
 	'term_merge_rule' => 'most-used',
 
 	/*
+	 * blog_id of the "main" site -- the one whose variant wins whenever
+	 * an element exists on several sites and only one can survive the
+	 * merge: term-name case ties (PLAN.md §6), duplicate
+	 * wp_template/wp_template_part slugs like 'header' (§9
+	 * template-slug-collision check), and site-identity elements
+	 * (header/footer, site title) generally. Leave unset for no
+	 * preference (ties fall back to lowest blog_id).
+	 */
+	// 'main_site' => 1,
+
+	/*
 	 * Spreadsheet output for bin/site-audit.php: 'xlsx' (default; falls
 	 * back to CSV when ext-zip is missing), 'csv', or 'both'. The JSON
 	 * dump and Markdown summary are always written.

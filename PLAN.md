@@ -163,6 +163,12 @@ one instead.
 - `generate_redirect_files` (bool, default `true`) — set to `false`
   when migrating into a purely local/throwaway destination where
   redirects are meaningless; turn on for the real production-bound run.
+- **`main_site`** (implemented, optional int blog_id) — the site whose
+  variant wins whenever an element exists on several sites but only one
+  can survive: term-name case ties (§6), duplicate
+  `wp_template`/`wp_template_part` slugs like `header` (§9
+  template-slug-collision check), and site-identity elements generally.
+  Unset = no preference, ties fall back to lowest blog_id.
 - Options: batch size, `--dry-run`, log level, term-merge case-rule
   (default: most-used-wins, overridable), post-type/post-status
   include/exclude lists (see §7.1 open item, now resolved with
@@ -262,10 +268,16 @@ fixing the byte-length prefixes PHP's serialization format requires
   (case-insensitive) since WP slugs are typically already lowercase.
 - When duplicates are found across sites with different casing (`php`
   vs `PHP`, `msr` vs `MSR`), canonical display name = **the variant
-  used on the most posts** across all included sites (ties broken by
-  first-encountered in site-ID order). This is computed in a pre-pass
-  before any terms are written, so it's deterministic and reported in
-  the audit output.
+  used on the most posts** across all included sites. Ties are broken
+  by **`main_site` when configured and the main site uses a variant**;
+  otherwise first-encountered in site-ID order. This is computed in a
+  pre-pass before any terms are written, so it's deterministic and
+  reported in the audit output.
+- The per-site term-candidate gather (term_id, name, taxonomy, count —
+  currently written inline in `bin/site-audit.php` for the nav-menu
+  merge labels and duplicated in `TermCaseCollisionCheck`) gets
+  extracted into a shared `src/Migration/` component in Phase 3, since
+  `TermMigrator` needs the identical query to drive the merge.
 - Hierarchical categories (parent/child) are preserved per site; if two
   sites have a category with the same name but different parents, this
   is flagged in the report for manual review rather than silently
@@ -479,15 +491,12 @@ provided across your sites/clients:
   - **Exclude as dev-only / no meaningful DB footprint**:
     `query-monitor` (confirmed by you as unlikely to have DB data worth
     migrating).
-  - **Needs a dedicated adapter, only if actually in use**: **Pods**
-    (`pods`) — since Pods can create fully custom DB tables (its
-    "Advanced Content Types" feature) with many-to-many relationships
-    that a generic option-copy can't handle. The integrity checker will
-    detect Pods' own tables/config and report whether any custom tables
-    exist; a specific `PodsAdapter` is only built if the audit confirms
-    you actually have Pods-managed custom tables/relationships to
-    migrate (v1 ships the detector; the adapter is a fast follow-up
-    once we know it's needed).
+  - **Pods — decided: detector only, no adapter.** You installed the
+    plugin but never built Pod content types, so there's no custom
+    table data to migrate. The integrity checker's `pods-detection`
+    section stays (it confirms that at a glance and catches any Pods
+    tables on a future reuse of this tool), but no `PodsAdapter` gets
+    written.
   - Everything else you listed (`ai-engine`, `akismet`,
     `advanced-custom-fields`, `google-site-kit`, `instant-images`,
     `litespeed-cache`/`object-cache.php` (server/cache config, not
@@ -646,6 +655,12 @@ checks). Checks include:
   detection.
 - Pods custom-table/relationship detection (§7.5).
 - Menu items / widgets referencing missing objects.
+- **Duplicate `wp_template`/`wp_template_part` slugs across sites**
+  (implemented as `template-slug-collision`): block-theme templates —
+  headers and footers live in `wp_template_part` — are keyed by
+  `post_name`, so N sites each having a `header` template part collide
+  on merge. The check lists every slug on >1 site with each site's
+  title/status, and names the `main_site` winner when configured.
 - Contact-page slug variants discovered (feeds the `/contact/`
   canonicalization list in §7.1, so you can confirm the list before
   migrating).
@@ -699,6 +714,13 @@ blocking issues are found; `--strict` flag to also fail on warnings.
   reasons), with a checkpoint file after each successfully committed
   batch so an interrupted run can resume with `--resume` instead of
   starting over or double-inserting.
+- **DDL stays outside transactions.** MySQL implicitly commits before
+  and after any DDL statement (`CREATE TABLE`, `ALTER TABLE`), so a
+  DDL inside a batch transaction would silently commit the pending
+  writes and make `rollBack()` a no-op. All schema setup —
+  `{prefix}_merge_migration_map`, any helper tables — runs up front,
+  before the first batch transaction opens.
+  (Data Definition Language is a subset of SQL commands used to define, modify, and delete database schema objects such as tables, indexes, views, and stored procedures.)
 - Batching: configurable batch size (default e.g. 200 posts/comments per
   batch) — matters for reusability on larger multisites even though
   yours is small.
@@ -820,10 +842,9 @@ default I'll build if you don't weigh in further:
 2. Exact destination `destination_url` value and destination admin
    user ID/login (needed once we actually configure `config.php` — not
    needed to start Phase 0/1/2).
-3. Whether Pods is actually in use anywhere (§7.5) — the checker's
-   `pods-detection` section now reports Pods-related tables/options on
-   the real data (10 findings in the latest run); review that section
-   to decide whether a `PodsAdapter` is warranted.
+3. ~~Whether Pods is actually in use~~ — resolved: the plugin was
+   installed but no Pod content types were ever built; `pods-detection`
+   stays as a confirming check, no `PodsAdapter` will be written.
 4. Any additional contact-form-page slugs beyond `/contact/` and
    `/contact-me/` you already know about, so the canonicalization list
    is complete before Phase 5 — otherwise `site-audit.php` (Phase 2)

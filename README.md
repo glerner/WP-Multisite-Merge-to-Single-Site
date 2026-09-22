@@ -14,7 +14,10 @@ database and your destination single-site's database.
 - PHP 8.2+
 - Composer
 - Read access to the source multisite's database and
-  `wp-content/uploads` directory
+  `wp-content` directory (uploads for media checks, `themes/` for
+  template detection)
+- (Optional, for template screenshots) `shot-scraper` -- see
+  `docs/making-screenshots.md`
 - (Once the migrator is used) write access to a destination
   WordPress database and `wp-content/uploads` directory
 
@@ -70,8 +73,52 @@ php bin/site-audit.php --all-sites
 php bin/site-audit.php --all-sites --post-types=post,page
 ```
 
-Output goes to `var/reports/site-audit-*.{csv,json}` plus a
-`-summary.md` tally, e.g. "12 pages use Contact Form 7, 3 use WPForms".
+Either `--site` or `--all-sites` is required; running bare prints usage
+and exits.
+
+Each scanned page also gets `template` / `template_status` columns: which
+template it renders through (resolved via `_wp_page_template` or the
+block-theme hierarchy, including child→parent inheritance), and whether
+that template is stock, `customized`, a `stale-customization` (a dormant
+row owned by an inactive theme -- retagging it to the active stylesheet
+restores it), a `missing-template`, `plugin-template`, `classic-theme`
+(the site runs a PHP-templated classic theme, so per-page block-template
+detail doesn't apply), etc. Stale template options are flagged too: when
+a theme's `Template:` style.css header disagrees with the `template`
+option (e.g. after a manual theme switch), the header wins and a warning
+is logged.
+
+Output goes to `var/reports/site-audit-*.{csv,json,xlsx}` (xlsx when
+ext-zip is available) plus a `-summary.md` tally, e.g. "12 pages use
+Contact Form 7, 3 use WPForms", with a "Page templates needing work"
+section listing stale/customized/missing templates by site. A
+`site-audit-needs-review-*.csv` lists the pages likely needing manual
+post-merge edits.
+
+### `bin/template-screenshots.php`
+
+Read-only visual inventory: screenshots each included site's templates
+and template parts (header/footer/sidebar) with shot-scraper, so theme
+output can be compared across sites before the merge. Requires
+`shot-scraper` (see `docs/making-screenshots.md`).
+
+Each template is shot on a page that actually renders it -- resolved via
+`show_on_front`/`page_on_front`/`page_for_posts`, WooCommerce page-ID
+options, or a sample published post -- and each part on a page whose
+template includes it (parsed from `wp:template-part` refs in DB rows and
+theme files). Templates with no reachable rendering page are skipped with
+a reason; parts without a reliable CSS selector are covered by the
+full-page shots of the templates that include them. Rows customized under
+an inactive theme are reported as retag candidates, not screenshotted.
+
+```bash
+php bin/template-screenshots.php            # all included sites
+php bin/template-screenshots.php --site=20  # one site
+php bin/template-screenshots.php --dry-run  # write shots.yml plan only
+```
+
+Output goes to `var/reports/template-shots/{blogId}-{slug}.png` with the
+plan in `shots.yml`.
 
 #### Found a block/shortcode/plugin this doesn't detect yet?
 

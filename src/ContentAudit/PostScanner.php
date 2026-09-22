@@ -6,6 +6,7 @@ namespace MergeMultisite\ContentAudit;
 
 use MergeMultisite\ContentAudit\Detectors\ContentDetectorInterface;
 use MergeMultisite\Db\Connection;
+use MergeMultisite\Migration\PageTemplateResolver;
 use MergeMultisite\Migration\Site;
 
 /**
@@ -23,8 +24,10 @@ final class PostScanner {
 	 *                                    label after the cross-site term merge (see
 	 *                                    TermMergeResolver); passed through to every
 	 *                                    ScannedPost.
+	 * @param PageTemplateResolver|null  $templateResolver When given, fills each
+	 *                                    row's template/templateStatus columns.
 	 */
-	public function __construct( private readonly array $detectors, private readonly array $termMergeTargets = array() ) {
+	public function __construct( private readonly array $detectors, private readonly array $termMergeTargets = array(), private readonly ?PageTemplateResolver $templateResolver = null ) {
 	}
 
 	/**
@@ -232,6 +235,11 @@ final class PostScanner {
 				}
 			}
 
+			$templateInfo = $this->templateResolver?->describe( $scannedPost ) ?? array(
+			'template' => '',
+			'status' => '',
+			);
+
 			$results[] = array(
 				'row' => new ContentAuditRow(
 					blogId: $site->blogId,
@@ -242,6 +250,8 @@ final class PostScanner {
 					slug: $scannedPost->slug,
 					postTitle: $scannedPost->postTitle,
 					categoryFindings: $categoryFindings,
+					template: $templateInfo['template'],
+					templateStatus: $templateInfo['status'],
 				),
 				'post' => $scannedPost,
 			);

@@ -15,6 +15,13 @@ final class ContentAuditRow {
 	/**
 	 * @param array<string, string[]> $categoryFindings Keyed by detector category, e.g. "form_plugin" => ["WPForms"].
 	 */
+	/**
+	 * @param string $template       The template this post renders through
+	 *                               (see PageTemplateResolver), '' when n/a.
+	 * @param string $templateStatus Why the template needs review
+	 *                               ('customized', 'stale-customization', ...),
+	 *                               '' when nothing per-page is needed.
+	 */
 	public function __construct(
 		public readonly int $blogId,
 		public readonly string $domain,
@@ -24,6 +31,8 @@ final class ContentAuditRow {
 		public readonly string $slug,
 		public readonly string $postTitle,
 		public readonly array $categoryFindings,
+		public readonly string $template = '',
+		public readonly string $templateStatus = '',
 	) {
 	}
 
@@ -40,6 +49,8 @@ final class ContentAuditRow {
 			'post_title' => $this->postTitle,
 			'slug' => $this->slug,
 			'original_url' => 'https://' . $this->domain . '/' . trim( $this->slug, '/' ) . '/',
+			'template' => $this->template,
+			'template_status' => $this->templateStatus,
 		);
 
 		foreach ( $this->categoryFindings as $category => $labels ) {

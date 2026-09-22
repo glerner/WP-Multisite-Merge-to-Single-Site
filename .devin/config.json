@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Exec(vendor/bin/phpunit)",
+      "Exec(vendor/bin/phpcs)",
+      "Exec(vendor/bin/phpcbf)",
+      "Exec(vendor/bin/phpstan)"
+    ]
+  }
+}

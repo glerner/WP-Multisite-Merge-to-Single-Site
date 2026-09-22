@@ -50,9 +50,13 @@ use MergeMultisite\ContentAudit\PluginUsageRollup;
 use MergeMultisite\ContentAudit\PostScanner;
 use MergeMultisite\Db\Connection;
 use MergeMultisite\Db\ConnectionException;
+use MergeMultisite\Migration\PageTemplateResolver;
 use MergeMultisite\Migration\PluginFootprintDetector;
 use MergeMultisite\Migration\PluginInventory;
 use MergeMultisite\Migration\SiteSelector;
+use MergeMultisite\Migration\TemplateContextCollector;
+use MergeMultisite\Migration\TemplateInventory;
+use MergeMultisite\Migration\TermInventory;
 use MergeMultisite\Migration\TermMergeResolver;
 use MergeMultisite\Report\ContentAuditReportWriter;
 use MergeMultisite\Report\NeedsReviewReportWriter;
@@ -184,33 +188,44 @@ $detectors = array(
 // Resolve the cross-site term merge up front so nav-menu findings can
 // show "category \"hello\" (#4) -> \"Hello\"" -- what a site's own term
 // becomes on the merged destination -- not just a site-local ID.
+$termInventory = new TermInventory();
 $termMergeTargets = array();
-$termCandidates = array();
+foreach (
+	( new TermMergeResolver( $config->mainSite ) )->resolve(
+		$termInventory->candidates( $termInventory->collect( $source, $sites ) )
+	) as $key => $group
+) {
+	$termMergeTargets[ $key ] = $group->canonicalLabel;
+}
+
+// Per-site template contexts (active theme + parent, template-part
+// usage, option/post-derived URLs) so each scanned post can be labeled
+// with the template it renders through and whether that template needs
+// rebuilding or just retagging after the merge.
+$templateInventory = ( new TemplateInventory() )->collect( $source, $sites );
+$contextCollector = TemplateContextCollector::fromUploadsPath( $config->source->uploadsPath );
+$templateContexts = array();
 foreach ( $sites as $site ) {
-	$termsTable = $source->siteTable( 'terms', $site->blogId );
-	$taxonomyTable = $source->siteTable( 'term_taxonomy', $site->blogId );
-	foreach (
-		$source->fetchAll(
-			"SELECT t.term_id, t.name AS label, tt.taxonomy, tt.count AS usage_count
-             FROM {$termsTable} t
-             INNER JOIN {$taxonomyTable} tt ON tt.term_id = t.term_id"
-		) as $term
-	) {
-		$termCandidates[] = array(
-			'taxonomy'    => (string) $term['taxonomy'],
-			'label'       => (string) $term['label'],
-			'usage_count' => (int) $term['usage_count'],
-			'site_id'     => $site->blogId,
+	$context = $contextCollector->collect( $source, $site, $templateInventory[ $site->blogId ] ?? array() );
+	$templateContexts[ $site->blogId ] = $context;
+
+	if ( $context->templateOption !== ''
+		&& $context->templateOption !== $context->stylesheet
+		&& $context->templateOption !== $context->parentStylesheet ) {
+		$logger->warning(
+			sprintf(
+				'Site %d `template` option mismatch: option="%s" but the active theme header resolves parent="%s" -- the theme header wins.',
+				$site->blogId,
+				$context->templateOption,
+				$context->parentStylesheet ?? 'none'
+			)
 		);
 	}
-}
-foreach ( ( new TermMergeResolver() )->resolve( $termCandidates ) as $key => $group ) {
-	$termMergeTargets[ $key ] = $group->canonicalLabel;
 }
 
 $logger->info( sprintf( 'Scanning %d site(s) with %d detector(s)...', count( $sites ), count( $detectors ) ) );
 
-$scanner = new PostScanner( $detectors, $termMergeTargets );
+$scanner = new PostScanner( $detectors, $termMergeTargets, new PageTemplateResolver( $templateContexts ) );
 $details = $scanner->scanWithDetails( $source, $sites, $postTypes, $config->excludedPostTypes, $config->excludedPostStatuses );
 $rows = array_map( static fn ( array $d ): ContentAuditRow => $d['row'], $details );
 

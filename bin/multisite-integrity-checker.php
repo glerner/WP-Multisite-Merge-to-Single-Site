@@ -43,6 +43,7 @@ use MergeMultisite\Audit\Checks\OrphanedPostAuthorCheck;
 use MergeMultisite\Audit\Checks\OrphanedPostParentCheck;
 use MergeMultisite\Audit\Checks\PluginDataCheck;
 use MergeMultisite\Audit\Checks\PodsDetectionCheck;
+use MergeMultisite\Audit\Checks\TemplateSlugCollisionCheck;
 use MergeMultisite\Audit\Checks\TermCaseCollisionCheck;
 use MergeMultisite\Audit\Checks\UserConflictCheck;
 use MergeMultisite\Config\ConfigException;
@@ -51,6 +52,7 @@ use MergeMultisite\Db\Connection;
 use MergeMultisite\Db\ConnectionException;
 use MergeMultisite\Migration\SiteSelector;
 use MergeMultisite\Migration\SitesPhpExporter;
+use MergeMultisite\Migration\TermMergeResolver;
 use MergeMultisite\Migration\UploadsPathResolver;
 use MergeMultisite\Report\AuditReportWriter;
 use MergeMultisite\Report\MissingMediaCopyScriptWriter;
@@ -120,7 +122,8 @@ $checks = array(
 	new OrphanedMetaCheck(),
 	new UserConflictCheck(),
 	new MediaFileCheck(),
-	new TermCaseCollisionCheck(),
+	new TermCaseCollisionCheck( new TermMergeResolver( $config->mainSite ) ),
+	new TemplateSlugCollisionCheck(),
 	new PluginDataCheck(),
 	new PodsDetectionCheck(),
 	new MenuWidgetIntegrityCheck(),

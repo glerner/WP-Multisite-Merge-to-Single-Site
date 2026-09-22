@@ -8,6 +8,7 @@ use MergeMultisite\Audit\AuditCheckInterface;
 use MergeMultisite\Audit\AuditFinding;
 use MergeMultisite\Config\MergeConfig;
 use MergeMultisite\Db\Connection;
+use MergeMultisite\Migration\TermInventory;
 use MergeMultisite\Migration\TermMergeResolver;
 
 /**
@@ -34,30 +35,10 @@ final class TermCaseCollisionCheck implements AuditCheckInterface {
 	}
 
 	public function run( Connection $source, MergeConfig $config, array $sites ): array {
-		$candidates = array();
-
-		foreach ( $sites as $site ) {
-			$termsTable = $source->siteTable( 'terms', $site->blogId );
-			$taxonomyTable = $source->siteTable( 'term_taxonomy', $site->blogId );
-
-			$rows = $source->fetchAll(
-				"SELECT t.name AS label, tt.taxonomy, tt.count AS usage_count
-                 FROM {$termsTable} t
-                 INNER JOIN {$taxonomyTable} tt ON tt.term_id = t.term_id
-                 WHERE tt.taxonomy IN ('category', 'post_tag')"
-			);
-
-			foreach ( $rows as $row ) {
-				$candidates[] = array(
-					'taxonomy' => (string) $row['taxonomy'],
-					'label' => (string) $row['label'],
-					'usage_count' => (int) $row['usage_count'],
-					'site_id' => $site->blogId,
-				);
-			}
-		}
-
-		$groups = $this->resolver->resolve( $candidates );
+		$inventory = new TermInventory();
+		$groups = $this->resolver->resolve(
+			$inventory->candidates( $inventory->collect( $source, $sites, array( 'category', 'post_tag' ) ) )
+		);
 
 		$findings = array();
 		foreach ( $groups as $group ) {

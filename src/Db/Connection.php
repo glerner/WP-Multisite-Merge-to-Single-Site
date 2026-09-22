@@ -177,6 +177,44 @@ EOT;
 	}
 
 	/**
+	 * The auto-increment ID from the most recent INSERT.
+	 */
+	public function lastInsertId(): int {
+		return (int) $this->pdo()->lastInsertId();
+	}
+
+	/**
+	 * Open a transaction on this connection. Callers must keep DDL
+	 * outside transactions -- MySQL implicitly commits before and
+	 * after CREATE/ALTER, which would silently commit pending writes
+	 * and make rollBack() a no-op.
+	 */
+	public function beginTransaction(): void {
+		$this->pdo()->beginTransaction();
+	}
+
+	/**
+	 * Commit the current transaction.
+	 */
+	public function commit(): void {
+		$this->pdo()->commit();
+	}
+
+	/**
+	 * Roll back the current transaction.
+	 */
+	public function rollBack(): void {
+		$this->pdo()->rollBack();
+	}
+
+	/**
+	 * Whether a transaction is currently open on this connection.
+	 */
+	public function inTransaction(): bool {
+		return $this->pdo !== null && $this->pdo->inTransaction();
+	}
+
+	/**
 	 * Determine whether a table exists in this connection's database.
 	 */
 	public function tableExists( string $tableName ): bool {

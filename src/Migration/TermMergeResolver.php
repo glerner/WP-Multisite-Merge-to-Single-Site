@@ -17,6 +17,15 @@ namespace MergeMultisite\Migration;
 final class TermMergeResolver {
 
 	/**
+	 * @param int|null $mainSite blog_id of the "main" site: when a
+	 *                           most-used tie needs breaking, a variant
+	 *                           the main site uses beats one it doesn't
+	 *                           (PLAN.md §6). Null = lowest site_id wins.
+	 */
+	public function __construct( private readonly ?int $mainSite = null ) {
+	}
+
+	/**
 	 * @param array<int, array{taxonomy:string, label:string, usage_count:int, site_id:int}> $candidates
 	 *
 	 * @return array<string, TermMergeGroup> Keyed by "{taxonomy}|{normalized label}".
@@ -49,28 +58,38 @@ final class TermMergeResolver {
 		// across every site that uses that exact variant.
 		$usageByLabel = array();
 		$firstSiteByLabel = array();
+		$onMainSiteByLabel = array();
 
 		foreach ( $members as $member ) {
 			$label = $member['label'];
 			$usageByLabel[ $label ] = ( $usageByLabel[ $label ] ?? 0 ) + $member['usage_count'];
 			$firstSiteByLabel[ $label ] = min( $firstSiteByLabel[ $label ] ?? PHP_INT_MAX, $member['site_id'] );
+			if ( $member['site_id'] === $this->mainSite ) {
+				$onMainSiteByLabel[ $label ] = true;
+			}
 		}
 
-		// Most-used wins; ties broken by the label first encountered on
-		// the lowest site_id (deterministic regardless of array order).
+		// Most-used wins; ties broken by the variant the main site uses
+		// (when main_site is configured), then by the label first
+		// encountered on the lowest site_id -- deterministic regardless
+		// of array order.
 		$canonical = null;
 		$bestUsage = -1;
+		$bestOnMain = false;
 		$bestFirstSite = PHP_INT_MAX;
 
 		foreach ( $usageByLabel as $label => $usage ) {
 			$firstSite = $firstSiteByLabel[ $label ];
+			$onMain = isset( $onMainSiteByLabel[ $label ] );
 
 			if (
 				$usage > $bestUsage
-				|| ( $usage === $bestUsage && $firstSite < $bestFirstSite )
+				|| ( $usage === $bestUsage && $onMain && ! $bestOnMain )
+				|| ( $usage === $bestUsage && $onMain === $bestOnMain && $firstSite < $bestFirstSite )
 			) {
 				$canonical = $label;
 				$bestUsage = $usage;
+				$bestOnMain = $onMain;
 				$bestFirstSite = $firstSite;
 			}
 		}

@@ -44,6 +44,12 @@ final class MergeConfig {
 	 *                                                              'xlsx' (default; falls back to CSV
 	 *                                                              when ext-zip is missing), 'csv', or
 	 *                                                              'both'.
+	 * @param int|null                             $mainSite          blog_id of the "main" site whose
+	 *                                                              variant wins conflicts (term-merge
+	 *                                                              ties, duplicate template slugs,
+	 *                                                              site-identity elements). Null means
+	 *                                                              no main site: ties fall back to
+	 *                                                              site-ID order.
 	 */
 	public function __construct(
 		public readonly DatabaseConfig $source,
@@ -64,6 +70,7 @@ final class MergeConfig {
 		public readonly array $mediaSearchPaths = array(),
 		public readonly array $ignoredShortcodes = array(),
 		public readonly string $spreadsheetFormat = 'xlsx',
+		public readonly ?int $mainSite = null,
 	) {
 	}
 

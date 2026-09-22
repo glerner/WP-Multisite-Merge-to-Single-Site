@@ -3,6 +3,12 @@
 For file/function/class lookup, see `docs/code-inventory.md`. For the
 phased migration plan, see `PLAN.md`.
 
+## Git
+
+NEVER run `git commit` — the user commits by hand. When asked for a
+commit, produce `commit-message.txt` (see the generate-commit-message
+skill) and stop; the user runs the commit themselves.
+
 ## Verify
 
 Always verify changes with: `composer test && composer phpcs && composer phpstan`

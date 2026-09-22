@@ -269,13 +269,12 @@ Scope: entire codebase (src/, bin/, config/), not just the commit. 8 medium,
   (they're not page content, but they ARE the answer to "which site's header
   survives the merge").
 
-- **Duplicate template-part slugs across sites** — nothing currently traps N
-  sites each having a wp_template_part named 'header'. Add a check (probably
-  in the integrity checker or the content audit) flagging same-slug
-  wp_template/wp_template_part across sites, so the main-site template wins
-  deliberately rather than by collision order.
+- **Duplicate template-part slugs across sites** — Done: new
+  `template-slug-collision` check (TemplateSlugCollisionCheck) in the
+  integrity checker flags same-slug wp_template/wp_template_part across
+  sites and names the main_site winner when configured.
 
-- **"Main site" setting** — add e.g. 'main_site' => 20 to config.php
-  (website-tech.glerner.com). Consumers: header/footer/template-part
-  resolution (main site's wins), possibly category/name conflict defaults
-  elsewhere. Post-merge, site identity elements come from the main site.
+- **"Main site" setting** — Done: 'main_site' config key (blog_id,
+  nullable) added to MergeConfig/ConfigLoader/config.sample.php; set in config.php. First consumers: TemplateSlugCollisionCheck winner
+  naming, and (per updated PLAN.md §6) term-merge case-tie breaking in
+  Phase 3's TermMigrator.

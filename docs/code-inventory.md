@@ -30,8 +30,9 @@ and produces one `MergeConfig`. All real config files are gitignored; each has
 a `*.sample.php` committed.
 
 - `config.php` — DB endpoints, `destination_url`, `excluded_post_types`,
-  `excluded_post_statuses`, `term_merge_rule`, `contact_page_paths`,
-  `suppressions` (finding-suppression rules), `media_search_paths`,
+  `excluded_post_statuses`, `term_merge_rule`, `main_site` (blog_id whose
+  variant wins merge conflicts), `contact_page_paths`, `suppressions`
+  (finding-suppression rules), `media_search_paths`, `spreadsheet_format`,
   `wpscan_api_token`.
 - `sites.php` — per-site `include` bool + `category_name`/`category_slug`
   overrides, keyed by blog_id.
@@ -61,7 +62,9 @@ collisions), `OrphanedMediaFileCheck` (files with no attachment post),
 `PluginDataCheck` (option-keys rules vs. real data; delegates footprint
 probing to `PluginFootprintDetector`), `MenuWidgetIntegrityCheck`,
 `UserConflictCheck`, `TermCaseCollisionCheck` (previews `TermMergeResolver`),
-`DivergentSiteOptionCheck`, `ContactPageDiscoveryCheck`, `PodsDetectionCheck`,
+`TemplateSlugCollisionCheck` (same-slug wp_template/wp_template_part across
+sites; `main_site` wins), `DivergentSiteOptionCheck`,
+`ContactPageDiscoveryCheck`, `PodsDetectionCheck`,
 `MalwareIndicatorCheck` (backed by pure `MalwareHeuristics`).
 
 ## Content audit pipeline (`src/ContentAudit/`)
@@ -122,6 +125,26 @@ SEO, caching, image optimization, CDN, security, backups, page builders).
   merge decisions (shared by the audit check and the future TermMigrator).
 - `SitesPhpExporter` — Site list → paste-ready `sites.php` source.
 - `Destination/AdminIdRenumberer` — SQL to move the admin off user ID 1.
+- `TemplateInventory` — wp_template/wp_template_part rows per site, each
+  with its `wp_theme` term (active stylesheet, stale theme, or
+  "plugin/file") and post_content.
+- `TemplateContext` + `TemplateContextCollector` — per-site template
+  environment (stylesheet/parent, show_on_front, front/posts page,
+  child+parent theme template slugs, part→template usage map,
+  slug→URL map); the collector reads options/posts and theme files.
+  Parent theme comes from the child theme's `Template:` style.css
+  header, not the `template` option (which can be stale after a
+  manual theme switch — the raw option is kept on the context so
+  the bin scripts can warn on mismatch).
+- `TemplateShotPlan` — pure shot planner for `bin/template-screenshots.php`;
+  shoots only templates/parts that actually render on a reachable page.
+- `PageTemplateResolver` — per-post template resolution
+  (`_wp_page_template` or hierarchy) + status for the audit's
+  `template`/`template_status` columns; sites whose effective theme
+  has no `templates/index.html` (child or parent) are labeled
+  `classic theme`/`classic-theme` instead of guessing.
+- `TemplatePartRefs` — parses `wp:template-part` slug refs out of block
+  markup (DB rows and theme .html files).
 
 ## Reports (`src/Report/`)
 

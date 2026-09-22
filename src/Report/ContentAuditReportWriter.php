@@ -71,7 +71,7 @@ final class ContentAuditReportWriter {
 	public function toCsv( array $rows, array $categories ): string {
 		$handle = fopen( 'php://temp', 'w+' );
 
-		$header = array( 'blog_id', 'domain', 'post_id', 'post_type', 'post_status', 'post_title', 'slug', 'original_url', ...$categories );
+		$header = array( 'blog_id', 'domain', 'post_id', 'post_type', 'post_status', 'post_title', 'slug', 'original_url', 'template', 'template_status', ...$categories );
 		fputcsv( $handle, $header, ',', '"', '\\' );
 
 		foreach ( $rows as $row ) {
@@ -107,6 +107,8 @@ final class ContentAuditReportWriter {
 			$lines = array( ...$lines, ...$this->pluginUsageSection( $pluginUsage ) );
 		}
 
+		$lines = array( ...$lines, ...$this->templateStatusSection( $rows ) );
+
 		foreach ( $categories as $category ) {
 			// label => ['count' => int, 'sites' => blog_id set]
 			$tally = array();
@@ -135,6 +137,60 @@ final class ContentAuditReportWriter {
 		}
 
 		return implode( PHP_EOL, $lines ) . PHP_EOL;
+	}
+
+	/**
+	 * Tally of the per-page template_status column: how many pages
+	 * resolve to a customized/stale/missing template and therefore need
+	 * rebuilding or evaluation in the new theme. Stale-theme
+	 * customizations (rows that would render again if retagged to the
+	 * active stylesheet) are listed individually -- they are the
+	 * "rename-and-migrate" candidates.
+	 *
+	 * @param ContentAuditRow[] $rows
+	 *
+	 * @return string[]
+	 */
+	private function templateStatusSection( array $rows ): array {
+		$byStatus = array();
+		$staleTemplates = array();
+		foreach ( $rows as $row ) {
+			if ( $row->templateStatus === '' ) {
+				continue;
+			}
+			$byStatus[ $row->templateStatus ][ $row->blogId ] = ( $byStatus[ $row->templateStatus ][ $row->blogId ] ?? 0 ) + 1;
+			if ( $row->templateStatus === 'stale-customization' || $row->templateStatus === 'stale-theme-template' ) {
+				$staleTemplates[ $row->template ][ $row->blogId ] = true;
+			}
+		}
+
+		if ( $byStatus === array() ) {
+			return array();
+		}
+
+		ksort( $byStatus );
+		$lines = array( '## Page templates needing work', '' );
+		foreach ( $byStatus as $status => $siteCounts ) {
+			$lines[] = sprintf(
+				'- %s: %d page(s) (sites: %s)',
+				$status,
+				array_sum( $siteCounts ),
+				implode( ', ', array_map( 'intval', array_keys( $siteCounts ) ) )
+			);
+		}
+		$lines[] = '';
+
+		if ( $staleTemplates !== array() ) {
+			ksort( $staleTemplates, SORT_NATURAL | SORT_FLAG_CASE );
+			$lines[] = 'Inactive-theme templates pages still resolve to (retag the wp_template row to the active stylesheet to restore them):';
+			$lines[] = '';
+			foreach ( $staleTemplates as $template => $siteIds ) {
+				$lines[] = sprintf( '- %s -- sites: %s', $template, implode( ', ', array_map( 'intval', array_keys( $siteIds ) ) ) );
+			}
+			$lines[] = '';
+		}
+
+		return $lines;
 	}
 
 	/**
@@ -297,23 +353,34 @@ final class ContentAuditReportWriter {
 			'slug',
 			'domain',
 			'post_status',
+			'template',
+			'template_status',
 			...$categories,
 		);
 
 		// PhpSpreadsheet widths are roughly character counts; ~50
 		// characters is about 5" at the default font.
 		$widths = array(
-			'blog_id'      => 9,
-			'original_url' => 50,
-			'post_id'      => 10,
-			'post_type'    => 14,
-			'post_title'   => 45,
-			'slug'         => 30,
-			'domain'       => 25,
-			'post_status'  => 10,
+			'blog_id'         => 9,
+			'original_url'    => 50,
+			'post_id'         => 10,
+			'post_type'       => 14,
+			'post_title'      => 45,
+			'slug'            => 30,
+			'domain'          => 25,
+			'post_status'     => 10,
+			'template'        => 30,
+			'template_status' => 24,
 		);
 
 		$spreadsheet = new Spreadsheet();
+		// XLSX cells hold one font name, not a CSS fallback stack, so pick
+		// the single name that resolves to a mono face on all three OSes:
+		// Office ships Consolas on Windows AND macOS, and fontconfig maps
+		// it to DejaVu Sans Mono on Linux. (Cascadia Mono, Menlo and
+		// ui-monospace all fall back to PROPORTIONAL fonts on Linux --
+		// worse than the Calibri default they were meant to replace.)
+		$spreadsheet->getDefaultStyle()->getFont()->setName( 'Consolas' );
 		$sheet       = $spreadsheet->getActiveSheet();
 		$sheet->setTitle( 'site-audit' );
 
