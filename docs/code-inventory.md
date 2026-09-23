@@ -43,7 +43,10 @@ are gitignored; each has a `*.sample.php` committed.
 - `term-overrides.php` — manual term-label merge decisions.
 - `plugin-roles.php` — overrides for `PluginUsageRollup`: add/extend
   `conflict_families` (`'-slug'` removes a built-in member), `signal_map`
-  aliases, and `not_a_plugin` tokens. Augments the built-ins.
+  aliases, and `not_a_plugin` tokens; plus `detector_extras` —
+  per-detector signature-table additions keyed by each detector's
+  `category()` (`seo_plugin`, `form_plugin`, `gallery`, `shortcodes`).
+  Augments the built-ins.
 
 ### DB endpoints (`src/Config/Endpoint/`)
 
@@ -104,6 +107,14 @@ Detectors (`src/ContentAudit/Detectors/`):
 - `NeedsReviewDetector` — derived category: page builders, slideshow
   shortcodes, ecommerce/LMS post types, and any non-core block namespace
   (a page full of `uagb/*` breaks if Spectra isn't installed).
+- `DetectorExtras` — merge helpers for `plugin-roles.php`
+  `detector_extras`: `patternMap` (label → regex[], appends),
+  `tupleMap` (label → [meta_key, needle], replaces per label),
+  `prefixMap` (prefix → label, replaces per prefix). The table-driven
+  detectors (`SeoPluginDetector`, `FormPluginDetector`, `GalleryDetector`)
+  merge extras over their built-in signature constants in the
+  constructor; `ShortcodeDetector`'s `ignored_tags` extra merges into
+  `ignoredShortcodes` at the call site in `bin/site-audit.php`.
 
 `PluginUsageRollup` groups detector labels into plugin entities via
 `SIGNAL_MAP` (token → `name` + `slugs` candidates), `NOT_A_PLUGIN`

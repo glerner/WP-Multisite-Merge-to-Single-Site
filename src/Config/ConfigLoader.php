@@ -59,6 +59,9 @@ final class ConfigLoader {
 		$termOverridesRaw = $this->optionalArrayFile( 'term-overrides.php' );
 		$termOverrides = is_array( $termOverridesRaw['taxonomy'] ?? null ) ? $termOverridesRaw['taxonomy'] : array();
 
+		$pluginRoles = $this->optionalArrayFile( 'plugin-roles.php' );
+		$detectorExtras = is_array( $pluginRoles['detector_extras'] ?? null ) ? $pluginRoles['detector_extras'] : array();
+
 		$spreadsheetFormat = (string) ( $config['spreadsheet_format'] ?? 'xlsx' );
 		if ( ! in_array( $spreadsheetFormat, array( 'xlsx', 'csv', 'both' ), true ) ) {
 			throw new ConfigException(
@@ -99,7 +102,8 @@ final class ConfigLoader {
 			),
 			spreadsheetFormat: $spreadsheetFormat,
 			mainSite: isset( $config['main_site'] ) ? (int) $config['main_site'] : null,
-			pluginRoles: $this->optionalArrayFile( 'plugin-roles.php' ),
+			pluginRoles: $pluginRoles,
+			detectorExtras: $detectorExtras,
 		);
 	}
 

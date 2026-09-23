@@ -78,6 +78,29 @@ final class FormPluginDetector implements ContentDetectorInterface {
 		'Infinite Responder' => array( 'infiniteresponder' ),
 	);
 
+	/** @var array<string, string[]> */
+	private readonly array $contentSignatures;
+
+	/** @var array<string, array{0: string, 1: string}> */
+	private readonly array $metaSignatures;
+
+	/** @var array<string, string[]> */
+	private readonly array $actionSignatures;
+
+	/**
+	 * @param array<string, mixed> $extras Optional 'detector_extras'
+	 *        block for this category (plugin-roles.php):
+	 *        'content_signatures' => label => patterns[] (appended),
+	 *        'meta_signatures' => label => [meta_key, needle]
+	 *        (replaced per label), 'action_signatures' => label =>
+	 *        patterns[] matched against a raw HTML form's action URL.
+	 */
+	public function __construct( array $extras = array() ) {
+		$this->contentSignatures = DetectorExtras::patternMap( self::CONTENT_SIGNATURES, $extras['content_signatures'] ?? null );
+		$this->metaSignatures = DetectorExtras::tupleMap( self::META_SIGNATURES, $extras['meta_signatures'] ?? null );
+		$this->actionSignatures = DetectorExtras::patternMap( self::KNOWN_ACTION_SIGNATURES, $extras['action_signatures'] ?? null );
+	}
+
 	public function category(): string {
 		return 'form_plugin';
 	}
@@ -85,7 +108,7 @@ final class FormPluginDetector implements ContentDetectorInterface {
 	public function detect( ScannedPost $post ): array {
 		$found = array();
 
-		foreach ( self::CONTENT_SIGNATURES as $label => $patterns ) {
+		foreach ( $this->contentSignatures as $label => $patterns ) {
 			foreach ( $patterns as $pattern ) {
 				if ( preg_match( '/' . $pattern . '/i', $post->content ) ) {
 					$found[] = $label;
@@ -94,7 +117,7 @@ final class FormPluginDetector implements ContentDetectorInterface {
 			}
 		}
 
-		foreach ( self::META_SIGNATURES as $label => list( $metaKey, $needle ) ) {
+		foreach ( $this->metaSignatures as $label => list( $metaKey, $needle ) ) {
 			$value = $post->metaValue( $metaKey );
 			if ( $value !== null && str_contains( $value, $needle ) ) {
 				$found[] = $label;
@@ -124,7 +147,7 @@ final class FormPluginDetector implements ContentDetectorInterface {
 	 * null when it is not a recognized external processor.
 	 */
 	private function knownActionLabel( string $action ): ?string {
-		foreach ( self::KNOWN_ACTION_SIGNATURES as $label => $patterns ) {
+		foreach ( $this->actionSignatures as $label => $patterns ) {
 			foreach ( $patterns as $pattern ) {
 				if ( preg_match( '/' . $pattern . '/i', $action ) === 1 ) {
 					return $label;

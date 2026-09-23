@@ -37,6 +37,7 @@ use MergeMultisite\Config\ConfigException;
 use MergeMultisite\Config\ConfigLoader;
 use MergeMultisite\ContentAudit\ContentAuditRow;
 use MergeMultisite\ContentAudit\Detectors\BlockDetector;
+use MergeMultisite\ContentAudit\Detectors\DetectorExtras;
 use MergeMultisite\ContentAudit\Detectors\EcommerceDetector;
 use MergeMultisite\ContentAudit\Detectors\FormPluginDetector;
 use MergeMultisite\ContentAudit\Detectors\GalleryDetector;
@@ -172,14 +173,22 @@ if ( $searchOption !== null ) {
 	exit( 0 );
 }
 
+// 'detector_extras' (plugin-roles.php) augments the table-driven
+// detectors' built-in signature lists, keyed by each detector's
+// category(); detectors without signature tables take no extras.
+$extrasFor = static fn ( string $category ): array => DetectorExtras::forCategory( $config->detectorExtras, $category );
+
+$shortcodeExtras = $extrasFor( 'shortcodes' );
+$extraIgnoredTags = is_array( $shortcodeExtras['ignored_tags'] ?? null ) ? $shortcodeExtras['ignored_tags'] : array();
+
 $detectors = array(
 	new BlockDetector(),
-	new ShortcodeDetector( $config->ignoredShortcodes ),
+	new ShortcodeDetector( array_merge( $config->ignoredShortcodes, array_map( 'strval', $extraIgnoredTags ) ) ),
 	new PageBuilderDetector(),
-	new FormPluginDetector(),
-	new GalleryDetector(),
+	new FormPluginDetector( $extrasFor( 'form_plugin' ) ),
+	new GalleryDetector( $extrasFor( 'gallery' ) ),
 	new VideoEmbedDetector(),
-	new SeoPluginDetector(),
+	new SeoPluginDetector( $extrasFor( 'seo_plugin' ) ),
 	new EcommerceDetector(),
 	new NavMenuItemDetector(),
 	new NeedsReviewDetector(),

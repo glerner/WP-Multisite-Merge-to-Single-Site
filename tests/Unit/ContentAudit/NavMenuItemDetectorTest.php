@@ -15,7 +15,7 @@ final class NavMenuItemDetectorTest extends TestCase {
 	public function testIgnoresNonMenuPostTypes(): void {
 		$detector = new NavMenuItemDetector();
 
-		$post = new ScannedPost( 1, 1, 'page', 'publish', 'p', 'P', '', array( '_menu_item_type' => array( 'custom' ) ) );
+		$post = new ScannedPost( blogId: 1, postId: 1, postType: 'page', postStatus: 'publish', slug: 'p', postTitle: 'P', content: '', meta: array( '_menu_item_type' => array( 'custom' ) ) );
 
 		self::assertSame( array(), $detector->detect( $post ) );
 	}
@@ -72,35 +72,35 @@ final class NavMenuItemDetectorTest extends TestCase {
 		$detector = new NavMenuItemDetector();
 
 		$taxonomy = new ScannedPost(
-			1,
-			1,
-			'nav_menu_item',
-			'publish',
-			'item',
-			'Item',
-			'',
-			array(
+			blogId: 1,
+			postId: 1,
+			postType: 'nav_menu_item',
+			postStatus: 'publish',
+			slug: 'item',
+			postTitle: 'Item',
+			content: '',
+			meta: array(
 				'_menu_item_type'      => array( 'taxonomy' ),
 				'_menu_item_object'    => array( 'category' ),
 				'_menu_item_object_id' => array( '45' ),
 			),
-			array( 45 => 'Hello' )
+			termNames: array( 45 => 'Hello' )
 		);
 		$page     = new ScannedPost(
-			1,
-			1,
-			'nav_menu_item',
-			'publish',
-			'item',
-			'Item',
-			'',
-			array(
+			blogId: 1,
+			postId: 1,
+			postType: 'nav_menu_item',
+			postStatus: 'publish',
+			slug: 'item',
+			postTitle: 'Item',
+			content: '',
+			meta: array(
 				'_menu_item_type'      => array( 'post_type' ),
 				'_menu_item_object'    => array( 'page' ),
 				'_menu_item_object_id' => array( '123' ),
 			),
-			array(),
-			array( 123 => 'About Us' )
+			termNames: array(),
+			postTitles: array( 123 => 'About Us' )
 		);
 
 		self::assertSame( array( 'category "Hello" (#45)' ), $detector->detect( $taxonomy ) );
@@ -111,21 +111,21 @@ final class NavMenuItemDetectorTest extends TestCase {
 		$detector = new NavMenuItemDetector();
 
 		$post = new ScannedPost(
-			1,
-			1,
-			'nav_menu_item',
-			'publish',
-			'item',
-			'Item',
-			'',
-			array(
+			blogId: 1,
+			postId: 1,
+			postType: 'nav_menu_item',
+			postStatus: 'publish',
+			slug: 'item',
+			postTitle: 'Item',
+			content: '',
+			meta: array(
 				'_menu_item_type'      => array( 'taxonomy' ),
 				'_menu_item_object'    => array( 'category' ),
 				'_menu_item_object_id' => array( '45' ),
 			),
-			array( 45 => 'hello' ),
-			array(),
-			array( 'category|hello' => 'Hello' )
+			termNames: array( 45 => 'hello' ),
+			postTitles: array(),
+			termMergeTargets: array( 'category|hello' => 'Hello' )
 		);
 
 		self::assertSame( array( 'category "hello" (#45) -> "Hello"' ), $detector->detect( $post ) );
@@ -141,6 +141,15 @@ final class NavMenuItemDetectorTest extends TestCase {
 	 * @param array<string, string[]> $meta
 	 */
 	private function menuItem( array $meta ): ScannedPost {
-		return new ScannedPost( 1, 1, 'nav_menu_item', 'publish', 'item', 'Item', '', $meta );
+		return new ScannedPost(
+			blogId: 1,
+			postId: 1,
+			postType: 'nav_menu_item',
+			postStatus: 'publish',
+			slug: 'item',
+			postTitle: 'Item',
+			content: '',
+			meta: $meta
+		);
 	}
 }

@@ -18,6 +18,10 @@ Always verify changes with: `composer test && composer phpcs && composer phpstan
 
 - PHP 8.2+, `declare(strict_types=1)`, WordPress array syntax
   (`array(...)`), docblocks on classes and public methods.
+- Named arguments for any call with more than ~4 parameters, or any
+  call where same-type arguments could silently swap (IDs, booleans,
+  strings) — e.g. `new ScannedPost( blogId: 1, postId: 1, ... )`.
+  Never write positional "mystery parameters".
 - Config lives in `config/*.php` returning arrays; real files are
   gitignored, every one has a committed `*.sample.php`.
 - Reports/logs go under `var/` (gitignored).

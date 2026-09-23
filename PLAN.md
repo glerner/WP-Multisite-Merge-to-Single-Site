@@ -342,7 +342,10 @@ fixing the byte-length prefixes PHP's serialization format requires
   retag-or-leave-dormant decision on merge. `custom_css` (Customizer
   Additional CSS) migrates with the posts table but is keyed to the old
   theme; the audit summary quotes each site's CSS verbatim for manual
-  copying.
+  copying. `bin/retag-templates.sh` generates a reviewable per-site
+  retag script for stale `wp_template`/`wp_template_part` rows
+  (annotating each with whether the active theme already has that
+  slug); `wp_global_styles` rows are flagged as comments only.
 - **Plugin-internal post types** (Jetpack sitemap/migration rows
   `jp_sitemap`, `jp_sitemap_master`, `jp_img_sitemap`,
   `jetpack_migration`; error logs like `asa-errors`; caches like

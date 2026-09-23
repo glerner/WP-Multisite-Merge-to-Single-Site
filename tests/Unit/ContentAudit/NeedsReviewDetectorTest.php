@@ -49,6 +49,15 @@ final class NeedsReviewDetectorTest extends TestCase {
 	 * @param array<string, string[]> $meta
 	 */
 	private function makePost( string $content, array $meta ): ScannedPost {
-		return new ScannedPost( 1, 1, 'page', 'publish', 'p', 'P', $content, $meta );
+		return new ScannedPost(
+			blogId: 1,
+			postId: 1,
+			postType: 'page',
+			postStatus: 'publish',
+			slug: 'p',
+			postTitle: 'P',
+			content: $content,
+			meta: $meta
+		);
 	}
 }

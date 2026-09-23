@@ -56,6 +56,10 @@ final class MergeConfig {
 	 *                                                              not-a-plugin tokens (from
 	 *                                                              plugin-roles.php); they augment the
 	 *                                                              built-in lists.
+	 * @param array<string, mixed>                 $detectorExtras    The 'detector_extras' section of
+	 *                                                              plugin-roles.php: per-detector
+	 *                                                              signature-table additions, keyed by
+	 *                                                              each detector's category().
 	 */
 	public function __construct(
 		public readonly DatabaseConfig $source,
@@ -78,6 +82,7 @@ final class MergeConfig {
 		public readonly string $spreadsheetFormat = 'xlsx',
 		public readonly ?int $mainSite = null,
 		public readonly array $pluginRoles = array(),
+		public readonly array $detectorExtras = array(),
 	) {
 	}
 

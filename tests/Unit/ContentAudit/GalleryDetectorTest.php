@@ -40,14 +40,16 @@ final class GalleryDetectorTest extends TestCase {
 		$detector = new GalleryDetector();
 
 		$post = new ScannedPost(
-			1,
-			1,
-			'page',
-			'publish',
-			'portfolio',
-			'Portfolio',
-			'',
-			array( '_elementor_data' => array( '[{"widgetType":"gallery","settings":{}}]' ) )
+			blogId: 1,
+			postId: 1,
+			postType: 'page',
+			postStatus: 'publish',
+			slug: 'portfolio',
+			postTitle: 'Portfolio',
+			content: '',
+			meta: array(
+				'_elementor_data' => array( '[{"widgetType":"gallery","settings":{}}]' ),
+			)
 		);
 
 		self::assertSame( array( 'Elementor Gallery' ), $detector->detect( $post ) );
@@ -67,14 +69,16 @@ final class GalleryDetectorTest extends TestCase {
 		);
 
 		$post = new ScannedPost(
-			1,
-			1,
-			'page',
-			'publish',
-			'portfolio',
-			'Portfolio',
-			'',
-			array( '_fl_builder_data' => array( serialize( $layout ) ) )
+			blogId: 1,
+			postId: 1,
+			postType: 'page',
+			postStatus: 'publish',
+			slug: 'portfolio',
+			postTitle: 'Portfolio',
+			content: '',
+			meta: array(
+				'_fl_builder_data' => array( serialize( $layout ) ),
+			)
 		);
 
 		self::assertSame( array( 'Beaver Builder Gallery' ), $detector->detect( $post ) );
@@ -91,14 +95,16 @@ final class GalleryDetectorTest extends TestCase {
 		);
 
 		$post = new ScannedPost(
-			1,
-			1,
-			'page',
-			'publish',
-			'portfolio',
-			'Portfolio',
-			'',
-			array( '_fl_builder_data' => array( serialize( $layout ) ) )
+			blogId: 1,
+			postId: 1,
+			postType: 'page',
+			postStatus: 'publish',
+			slug: 'portfolio',
+			postTitle: 'Portfolio',
+			content: '',
+			meta: array(
+				'_fl_builder_data' => array( serialize( $layout ) ),
+			)
 		);
 
 		self::assertSame( array(), $detector->detect( $post ) );
@@ -112,7 +118,54 @@ final class GalleryDetectorTest extends TestCase {
 		self::assertSame( array(), $detector->detect( $post ) );
 	}
 
+	/**
+	 * Detector_extras 'content_signatures' teaches the detector a
+	 * gallery plugin it doesn't know, without a source edit.
+	 */
+	public function testExtrasContentSignatureAddsNewPlugin(): void {
+		$detector = new GalleryDetector(
+			array( 'content_signatures' => array( 'My Gallery' => array( '\[mygallery\b' ) ) )
+		);
+
+		$post = $this->makePost( '[mygallery ids="1,2"]' );
+
+		self::assertSame( array( 'My Gallery' ), $detector->detect( $post ) );
+	}
+
+	/**
+	 * Detector_extras 'serialized_meta_signatures' names a
+	 * PHP-serialized builder layout's gallery module, same as the
+	 * built-in Beaver Builder signature.
+	 */
+	public function testExtrasSerializedMetaSignatureDetectsBuilderModule(): void {
+		$detector = new GalleryDetector(
+			array( 'serialized_meta_signatures' => array( 'My Builder Gallery' => array( '_my_builder_data', 'photos' ) ) )
+		);
+
+		$layout = array(
+			(object) array(
+				'type'     => 'module',
+				'settings' => (object) array( 'type' => 'photos' ),
+			),
+		);
+
+		$post = new ScannedPost(
+			blogId: 1,
+			postId: 1,
+			postType: 'page',
+			postStatus: 'publish',
+			slug: 'portfolio',
+			postTitle: 'Portfolio',
+			content: '',
+			meta: array(
+				'_my_builder_data' => array( serialize( $layout ) ),
+			)
+		);
+
+		self::assertSame( array( 'My Builder Gallery' ), $detector->detect( $post ) );
+	}
+
 	private function makePost( string $content ): ScannedPost {
-		return new ScannedPost( 1, 1, 'page', 'publish', 'portfolio', 'Portfolio', $content, array() );
+		return new ScannedPost( blogId: 1, postId: 1, postType: 'page', postStatus: 'publish', slug: 'portfolio', postTitle: 'Portfolio', content: $content, meta: array() );
 	}
 }

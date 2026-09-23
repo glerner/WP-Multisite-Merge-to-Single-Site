@@ -57,6 +57,30 @@ final class GalleryDetector implements ContentDetectorInterface {
 		'Beaver Builder Gallery' => array( '_fl_builder_data', 'gallery' ),
 	);
 
+	/** @var array<string, string[]> */
+	private readonly array $contentSignatures;
+
+	/** @var array<string, array{0: string, 1: string}> */
+	private readonly array $metaSignatures;
+
+	/** @var array<string, array{0: string, 1: string}> */
+	private readonly array $serializedMetaSignatures;
+
+	/**
+	 * @param array<string, mixed> $extras Optional 'detector_extras'
+	 *        block for this category (plugin-roles.php):
+	 *        'content_signatures' => label => patterns[] (appended),
+	 *        'meta_signatures' => label => [meta_key, needle],
+	 *        'serialized_meta_signatures' => label => [meta_key,
+	 *        module_type] for PHP-serialized builder layouts
+	 *        (both replaced per label).
+	 */
+	public function __construct( array $extras = array() ) {
+		$this->contentSignatures = DetectorExtras::patternMap( self::CONTENT_SIGNATURES, $extras['content_signatures'] ?? null );
+		$this->metaSignatures = DetectorExtras::tupleMap( self::META_SIGNATURES, $extras['meta_signatures'] ?? null );
+		$this->serializedMetaSignatures = DetectorExtras::tupleMap( self::SERIALIZED_META_SIGNATURES, $extras['serialized_meta_signatures'] ?? null );
+	}
+
 	public function category(): string {
 		return 'gallery';
 	}
@@ -64,7 +88,7 @@ final class GalleryDetector implements ContentDetectorInterface {
 	public function detect( ScannedPost $post ): array {
 		$found = array();
 
-		foreach ( self::CONTENT_SIGNATURES as $label => $patterns ) {
+		foreach ( $this->contentSignatures as $label => $patterns ) {
 			foreach ( $patterns as $pattern ) {
 				if ( preg_match( '/' . $pattern . '/i', $post->content ) ) {
 					$found[] = $label;
@@ -73,14 +97,14 @@ final class GalleryDetector implements ContentDetectorInterface {
 			}
 		}
 
-		foreach ( self::META_SIGNATURES as $label => list( $metaKey, $needle ) ) {
+		foreach ( $this->metaSignatures as $label => list( $metaKey, $needle ) ) {
 			$value = $post->metaValue( $metaKey );
 			if ( $value !== null && str_contains( $value, $needle ) ) {
 				$found[] = $label;
 			}
 		}
 
-		foreach ( self::SERIALIZED_META_SIGNATURES as $label => list( $metaKey, $moduleType ) ) {
+		foreach ( $this->serializedMetaSignatures as $label => list( $metaKey, $moduleType ) ) {
 			$value = $post->metaValue( $metaKey );
 			if ( $value !== null && $this->serializedDataHasModuleType( $value, $moduleType ) ) {
 				$found[] = $label;

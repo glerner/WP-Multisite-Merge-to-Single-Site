@@ -26,6 +26,22 @@ final class SeoPluginDetector implements ContentDetectorInterface {
 		'_sq_' => 'Squirrly SEO',
 	);
 
+	/**
+	 * META_PREFIXES after config extras.
+	 *
+	 * @var array<string, string>
+	 */
+	private readonly array $metaPrefixes;
+
+	/**
+	 * @param array<string, mixed> $extras Optional 'detector_extras'
+	 *        block for this category (plugin-roles.php):
+	 *        'meta_prefixes' => meta-key prefix => plugin label.
+	 */
+	public function __construct( array $extras = array() ) {
+		$this->metaPrefixes = DetectorExtras::prefixMap( self::META_PREFIXES, $extras['meta_prefixes'] ?? null );
+	}
+
 	public function category(): string {
 		return 'seo_plugin';
 	}
@@ -33,7 +49,7 @@ final class SeoPluginDetector implements ContentDetectorInterface {
 	public function detect( ScannedPost $post ): array {
 		$found = array();
 
-		foreach ( self::META_PREFIXES as $prefix => $label ) {
+		foreach ( $this->metaPrefixes as $prefix => $label ) {
 			if ( $post->hasMetaKeyPrefixed( $prefix ) ) {
 				$found[] = $label;
 			}

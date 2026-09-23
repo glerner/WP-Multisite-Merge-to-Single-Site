@@ -94,6 +94,6 @@ final class ShortcodeDetectorTest extends TestCase {
 	}
 
 	private function makePost( string $content ): ScannedPost {
-		return new ScannedPost( 1, 1, 'post', 'publish', 'my-post', 'My Post', $content, array() );
+		return new ScannedPost( blogId: 1, postId: 1, postType: 'post', postStatus: 'publish', slug: 'my-post', postTitle: 'My Post', content: $content, meta: array() );
 	}
 }
