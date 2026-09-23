@@ -50,6 +50,12 @@ final class MergeConfig {
 	 *                                                              site-identity elements). Null means
 	 *                                                              no main site: ties fall back to
 	 *                                                              site-ID order.
+	 * @param array<string, mixed>                 $pluginRoles       User overrides for
+	 *                                                              PluginUsageRollup's plugin-role
+	 *                                                              families, signal aliases, and
+	 *                                                              not-a-plugin tokens (from
+	 *                                                              plugin-roles.php); they augment the
+	 *                                                              built-in lists.
 	 */
 	public function __construct(
 		public readonly DatabaseConfig $source,
@@ -71,6 +77,7 @@ final class MergeConfig {
 		public readonly array $ignoredShortcodes = array(),
 		public readonly string $spreadsheetFormat = 'xlsx',
 		public readonly ?int $mainSite = null,
+		public readonly array $pluginRoles = array(),
 	) {
 	}
 

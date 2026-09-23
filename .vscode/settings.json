@@ -7,6 +7,7 @@
     "phpcs.executablePath": "${workspaceFolder}/vendor/bin/phpcs",
     "php-cs-fixer.onsave": false,
     "[php]": {
-        "editor.defaultFormatter": "valeryanm.vscode-phpsab"
+        "editor.defaultFormatter": "valeryanm.vscode-phpsab",
+        "editor.formatOnSave": false
     }
 }

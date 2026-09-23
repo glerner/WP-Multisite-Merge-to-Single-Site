@@ -25,43 +25,156 @@ final class PluginUsageRollup {
 
 	/**
 	 * Content-signal token (a condensed detector label or prefix of
-	 * one) => [display name, candidate plugin directory slugs]. The
-	 * first candidate present on disk wins; when none is installed the
-	 * signal still groups under the display name in the
-	 * "not installed" list.
+	 * one) => array with 'name' (display name for reports) and 'slugs'
+	 * (candidate plugin directory names to look for; the first present
+	 * on disk wins). When none is installed the signal still groups
+	 * under 'name' in the "not installed" list.
 	 *
 	 * Keys are matched against the condensed label (lowercased, with
 	 * dashes/underscores/spaces stripped); longest prefix wins, so
 	 * "ninjaforms" beats "ninja".
 	 */
 	private const SIGNAL_MAP = array(
-		'uagb'              => array( 'Spectra / Ultimate Addons for Gutenberg', array( 'ultimate-addons-for-gutenberg', 'spectra', 'uagb' ) ),
-		'greenshift'        => array( 'Greenshift', array( 'greenshift-animation-and-page-builder-blocks', 'greenshift' ) ),
-		'ninjaforms'        => array( 'Ninja Forms', array( 'ninja-forms' ) ),
-		'ninja'             => array( 'Ninja Forms', array( 'ninja-forms' ) ),
-		'wsform'            => array( 'WS Form', array( 'ws-form' ) ),
-		'wsf'               => array( 'WS Form', array( 'ws-form' ) ),
-		'wpforms'           => array( 'WPForms', array( 'wpforms', 'wpforms-lite' ) ),
-		'contactform'       => array( 'Contact Form 7', array( 'contact-form-7' ) ),
-		'wpcf7'             => array( 'Contact Form 7', array( 'contact-form-7' ) ),
-		'gravityform'       => array( 'Gravity Forms', array( 'gravityforms', 'gravity-forms' ) ),
-		'gravity'           => array( 'Gravity Forms', array( 'gravityforms', 'gravity-forms' ) ),
-		'flamingo'          => array( 'Flamingo', array( 'flamingo' ) ),
-		'surecart'          => array( 'SureCart', array( 'surecart' ) ),
-		'woocommerce'       => array( 'WooCommerce', array( 'woocommerce' ) ),
-		'pmpro'             => array( 'Paid Memberships Pro', array( 'paid-memberships-pro' ) ),
-		'mla'               => array( 'Media Library Assistant', array( 'media-library-assistant' ) ),
-		'amazonproduct'     => array( 'Amazon Simple Affiliate', array( 'amazon-simple-affiliate', 'amazon-affiliate' ) ),
-		'asa'               => array( 'Amazon Simple Affiliate', array( 'amazon-simple-affiliate', 'asa' ) ),
-		'adinserter'        => array( 'Ad Inserter', array( 'ad-inserter', 'adinserter' ) ),
-		'cfce'              => array( 'wpwm-cfce-plugin', array( 'wpwm-cfce-plugin' ) ),
-		'etpb'              => array( 'Divi', array( 'divi-builder', 'divi' ) ),
-		'divi'              => array( 'Divi', array( 'divi-builder', 'divi' ) ),
-		'yoast'             => array( 'Yoast SEO', array( 'wordpress-seo' ) ),
-		'wordpressseo'      => array( 'Yoast SEO', array( 'wordpress-seo' ) ),
-		'theseoframework'   => array( 'The SEO Framework', array( 'autodescription', 'the-seo-framework' ) ),
-		'autodescription'   => array( 'The SEO Framework', array( 'autodescription', 'the-seo-framework' ) ),
-		'syntaxhighlighter' => array( 'SyntaxHighlighter', array( 'syntaxhighlighter-evolved', 'syntaxhighlighter' ) ),
+		'uagb'              => array(
+	'name' => 'Spectra / Ultimate Addons for Gutenberg',
+	'slugs' => array( 'ultimate-addons-for-gutenberg', 'spectra', 'uagb' ),
+	),
+		'greenshift'        => array(
+	'name' => 'Greenshift',
+	'slugs' => array( 'greenshift-animation-and-page-builder-blocks', 'greenshift' ),
+	),
+		'ninjaforms'        => array(
+	'name' => 'Ninja Forms',
+	'slugs' => array( 'ninja-forms' ),
+	),
+		'ninja'             => array(
+	'name' => 'Ninja Forms',
+	'slugs' => array( 'ninja-forms' ),
+	),
+		'wsform'            => array(
+	'name' => 'WS Form',
+	'slugs' => array( 'ws-form' ),
+	),
+		'wsf'               => array(
+	'name' => 'WS Form',
+	'slugs' => array( 'ws-form' ),
+	),
+		'wpforms'           => array(
+	'name' => 'WPForms',
+	'slugs' => array( 'wpforms', 'wpforms-lite' ),
+	),
+		'contactform'       => array(
+	'name' => 'Contact Form 7',
+	'slugs' => array( 'contact-form-7' ),
+	),
+		'wpcf7'             => array(
+	'name' => 'Contact Form 7',
+	'slugs' => array( 'contact-form-7' ),
+	),
+		'gravityform'       => array(
+	'name' => 'Gravity Forms',
+	'slugs' => array( 'gravityforms', 'gravity-forms' ),
+	),
+		'gravity'           => array(
+	'name' => 'Gravity Forms',
+	'slugs' => array( 'gravityforms', 'gravity-forms' ),
+	),
+		'flamingo'          => array(
+	'name' => 'Flamingo',
+	'slugs' => array( 'flamingo' ),
+	),
+		'sureforms'         => array(
+	'name' => 'SureForms',
+	'slugs' => array( 'sureforms' ),
+	),
+		'srfm'              => array(
+	'name' => 'SureForms',
+	'slugs' => array( 'sureforms' ),
+	),
+		'surecart'          => array(
+	'name' => 'SureCart',
+	'slugs' => array( 'surecart' ),
+	),
+		'woocommerce'       => array(
+	'name' => 'WooCommerce',
+	'slugs' => array( 'woocommerce' ),
+	),
+		'pmpro'             => array(
+	'name' => 'Paid Memberships Pro',
+	'slugs' => array( 'paid-memberships-pro' ),
+	),
+		'mla'               => array(
+	'name' => 'Media Library Assistant',
+	'slugs' => array( 'media-library-assistant' ),
+	),
+		'amazonproduct'     => array(
+	'name' => 'Amazon Simple Affiliate',
+	'slugs' => array( 'amazon-simple-affiliate', 'amazon-affiliate' ),
+	),
+		'asa'               => array(
+	'name' => 'Amazon Simple Affiliate',
+	'slugs' => array( 'amazon-simple-affiliate', 'asa' ),
+	),
+		'adinserter'        => array(
+	'name' => 'Ad Inserter',
+	'slugs' => array( 'ad-inserter', 'adinserter' ),
+	),
+		'cfce'              => array(
+	'name' => 'wpwm-cfce-plugin',
+	'slugs' => array( 'wpwm-cfce-plugin' ),
+	),
+		'etpb'              => array(
+	'name' => 'Divi',
+	'slugs' => array( 'divi-builder', 'divi' ),
+	),
+		'divi'              => array(
+	'name' => 'Divi',
+	'slugs' => array( 'divi-builder', 'divi' ),
+	),
+		'yoast'             => array(
+	'name' => 'Yoast SEO',
+	'slugs' => array( 'wordpress-seo' ),
+	),
+		'wordpressseo'      => array(
+	'name' => 'Yoast SEO',
+	'slugs' => array( 'wordpress-seo' ),
+	),
+		'allinoneseo'       => array(
+	'name' => 'All in One SEO',
+	'slugs' => array( 'all-in-one-seo-pack' ),
+	),
+		'rankmath'          => array(
+	'name' => 'Rank Math',
+	'slugs' => array( 'seo-by-rank-math' ),
+	),
+		'seopress'          => array(
+	'name' => 'SEOPress',
+	'slugs' => array( 'seopress', 'wp-seopress' ),
+	),
+		'squirrly'          => array(
+	'name' => 'Squirrly SEO',
+	'slugs' => array( 'squirrly-seo' ),
+	),
+		'akismet'           => array(
+	'name' => 'Akismet',
+	'slugs' => array( 'akismet' ),
+	),
+		'antispambee'       => array(
+	'name' => 'Antispam Bee',
+	'slugs' => array( 'antispam-bee' ),
+	),
+		'theseoframework'   => array(
+	'name' => 'The SEO Framework',
+	'slugs' => array( 'autodescription', 'the-seo-framework' ),
+	),
+		'autodescription'   => array(
+	'name' => 'The SEO Framework',
+	'slugs' => array( 'autodescription', 'the-seo-framework' ),
+	),
+		'syntaxhighlighter' => array(
+	'name' => 'SyntaxHighlighter',
+	'slugs' => array( 'syntaxhighlighter-evolved', 'syntaxhighlighter' ),
+	),
 	);
 
 	/**
@@ -92,8 +205,9 @@ final class PluginUsageRollup {
 	 */
 	private const CONFLICT_FAMILIES = array(
 		'Mail delivery / SMTP' => array( 'wp-mail-smtp', 'post-smtp', 'easy-wp-smtp', 'fluent-smtp', 'gmail-smtp', 'mailinblue', 'brevo', 'sendgrid', 'mailgun', 'mailpoet', 'wp-mail-bank' ),
-		'Contact forms'        => array( 'contact-form-7', 'wpforms', 'wpforms-lite', 'gravityforms', 'ninja-forms', 'ws-form', 'fluent-forms', 'formidable', 'forminator' ),
+		'Contact forms'        => array( 'contact-form-7', 'wpforms', 'wpforms-lite', 'gravityforms', 'ninja-forms', 'ws-form', 'fluent-forms', 'formidable', 'forminator', 'sureforms' ),
 		'SEO'                  => array( 'wordpress-seo', 'all-in-one-seo-pack', 'seo-by-rank-math', 'autodescription', 'the-seo-framework', 'seopress', 'squirrly-seo' ),
+		'Comment spam'         => array( 'akismet', 'antispam-bee', 'cleantalk-spam-protect', 'stop-spammer-registrations-plugin', 'wp-spamshield', 'titan-anti-spam', 'zero-spam' ),
 		'Caching/performance'  => array( 'w3-total-cache', 'wp-super-cache', 'litespeed-cache', 'wp-rocket', 'cache-enabler', 'breeze', 'sg-cachepress', 'wp-fastest-cache', 'flying-press', 'nitropack' ),
 		'Image optimization'   => array( 'ewww-image-optimizer', 'ewww-image-optimizer-cloud', 'imagify', 'wp-smushit', 'shortpixel-image-optimiser', 'robin-image-optimizer', 'tiny-compress-images', 'optimole-wp', 'webp-converter-for-media', 'webp-express', 'iio', 'resmushit-image-optimizer' ),
 		'CDN/edge'             => array( 'cloudflare', 'cdn-enabler', 'jetpack-boost', 'bunnycdn' ),
@@ -101,6 +215,104 @@ final class PluginUsageRollup {
 		'Backups'              => array( 'updraftplus', 'duplicator', 'backwpup', 'backup-backup', 'wpvivid-backuprestore' ),
 		'Page builders'        => array( 'elementor', 'divi-builder', 'beaver-builder-lite-version', 'siteorigin-panels', 'visualcomposer', 'themify-builder' ),
 	);
+
+	/**
+	 * SIGNAL_MAP after config overrides.
+	 *
+	 * @var array<string, array{name: string, slugs: string[]}>
+	 */
+	private array $signalMap;
+
+	/**
+	 * NOT_A_PLUGIN after config overrides.
+	 *
+	 * @var string[]
+	 */
+	private array $notAPlugin;
+
+	/**
+	 * CONFLICT_FAMILIES after config overrides.
+	 *
+	 * @var array<string, string[]>
+	 */
+	private array $conflictFamilies;
+
+	/**
+	 * @param array<string, mixed> $overrides Optional user config
+	 *        (config/plugin-roles.php) that AUGMENTS the built-in maps:
+	 *        'signal_map' => token => array('name' => string,
+	 *        'slugs' => string[]) added/overridden (a positional
+	 *        array(name, slugs) is also accepted and normalized),
+	 *        'not_a_plugin' => extra tokens treated as platform output,
+	 *        'conflict_families' => family => slug[] merged into the
+	 *        same-named family or added as a new one. Prefix a slug
+	 *        with '-' to remove it from a built-in family.
+	 */
+	public function __construct( array $overrides = array() ) {
+		$signalOverrides = is_array( $overrides['signal_map'] ?? null ) ? $overrides['signal_map'] : array();
+		$this->signalMap = self::SIGNAL_MAP;
+		foreach ( $signalOverrides as $token => $definition ) {
+			$normalized = self::normalizeSignalDefinition( $definition );
+			if ( $normalized !== null ) {
+				$this->signalMap[ (string) $token ] = $normalized;
+			}
+		}
+
+		$notPluginOverrides = is_array( $overrides['not_a_plugin'] ?? null ) ? $overrides['not_a_plugin'] : array();
+		$this->notAPlugin = array_values(
+			array_unique( array_merge( self::NOT_A_PLUGIN, array_map( 'strval', $notPluginOverrides ) ) )
+		);
+
+		$this->conflictFamilies = self::CONFLICT_FAMILIES;
+		$familyOverrides = is_array( $overrides['conflict_families'] ?? null ) ? $overrides['conflict_families'] : array();
+		foreach ( $familyOverrides as $family => $slugs ) {
+			if ( ! is_array( $slugs ) ) {
+				continue;
+			}
+			$merged = $this->conflictFamilies[ (string) $family ] ?? array();
+			foreach ( array_map( 'strval', $slugs ) as $slug ) {
+				if ( str_starts_with( $slug, '-' ) ) {
+					$merged = array_values( array_diff( $merged, array( substr( $slug, 1 ) ) ) );
+				} elseif ( ! in_array( $slug, $merged, true ) ) {
+					$merged[] = $slug;
+				}
+			}
+			$this->conflictFamilies[ (string) $family ] = $merged;
+		}
+	}
+
+	/**
+	 * Normalize a config-file signal_map entry into the canonical
+	 * array('name' => string, 'slugs' => string[]) shape. Accepts the
+	 * named form and the legacy positional form array(name, slugs);
+	 * anything else returns null and is ignored.
+	 *
+	 * @param mixed $definition Raw config value.
+	 *
+	 * @return array{name: string, slugs: string[]}|null
+	 */
+	private static function normalizeSignalDefinition( mixed $definition ): ?array {
+		if ( ! is_array( $definition ) ) {
+			return null;
+		}
+
+		if ( isset( $definition['name'] ) ) {
+			$slugs = $definition['slugs'] ?? array();
+		} elseif ( isset( $definition[0] ) ) {
+			$definition = array(
+				'name'  => $definition[0],
+				'slugs' => $definition[1] ?? array(),
+			);
+			$slugs = $definition['slugs'];
+		} else {
+			return null;
+		}
+
+		return array(
+			'name'  => (string) $definition['name'],
+			'slugs' => array_map( 'strval', is_array( $slugs ) ? $slugs : array( $slugs ) ),
+		);
+	}
 
 	/**
 	 * @param ContentAuditRow[]    $rows
@@ -221,7 +433,7 @@ final class PluginUsageRollup {
 	private function roleConflicts( array $installedSlugs, array $activeSitesBySlug ): array {
 		$conflicts = array();
 
-		foreach ( self::CONFLICT_FAMILIES as $family => $slugs ) {
+		foreach ( $this->conflictFamilies as $family => $slugs ) {
 			$members = array();
 			foreach ( array_intersect( $slugs, $installedSlugs ) as $slug ) {
 				$active = array_values( array_unique( array_map( 'intval', $activeSitesBySlug[ $slug ] ?? array() ) ) );
@@ -277,16 +489,16 @@ final class PluginUsageRollup {
 		$condensed = self::condense( $token );
 
 		$bestPrefix = '';
-		foreach ( self::SIGNAL_MAP as $prefix => $definition ) {
+		foreach ( $this->signalMap as $prefix => $definition ) {
 			if ( ( $condensed === $prefix || str_starts_with( $condensed, $prefix ) ) && strlen( $prefix ) > strlen( $bestPrefix ) ) {
 				$bestPrefix = $prefix;
 			}
 		}
 
 		if ( $bestPrefix !== '' ) {
-			[ $name, $candidates ] = self::SIGNAL_MAP[ $bestPrefix ];
+			$definition = $this->signalMap[ $bestPrefix ];
 
-			return array( $name, $this->firstInstalled( $candidates, $installedSlugs ) );
+			return array( $definition['name'], $this->firstInstalled( $definition['slugs'], $installedSlugs ) );
 		}
 
 		// No alias: an installed slug whose condensed form equals or
@@ -308,7 +520,7 @@ final class PluginUsageRollup {
 			return array( $bestSlug, $bestSlug );
 		}
 
-		foreach ( self::NOT_A_PLUGIN as $notPlugin ) {
+		foreach ( $this->notAPlugin as $notPlugin ) {
 			if ( $condensed === $notPlugin || str_starts_with( $condensed, $notPlugin ) ) {
 				return null;
 			}

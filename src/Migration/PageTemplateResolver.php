@@ -64,6 +64,9 @@ final class PageTemplateResolver {
 		'acf-field-group',
 		'acf-field',
 		'wpcode',
+		// WooCommerce product variations render inside the parent 'product'
+		// page; they have no frontend URL of their own.
+		'product_variation',
 		// Stored form submissions and builder library items -- data
 		// containers, not pages.
 		'flamingo_contact',

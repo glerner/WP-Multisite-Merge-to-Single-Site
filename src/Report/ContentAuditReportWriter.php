@@ -108,6 +108,7 @@ final class ContentAuditReportWriter {
 		}
 
 		$lines = array( ...$lines, ...$this->templateStatusSection( $rows ) );
+		$lines = array( ...$lines, ...$this->futurePostsSection( $rows ) );
 
 		foreach ( $categories as $category ) {
 			// label => ['count' => int, 'sites' => blog_id set]
@@ -135,6 +136,8 @@ final class ContentAuditReportWriter {
 			}
 			$lines[] = '';
 		}
+
+		$lines = array( ...$lines, ...$this->customCssSection( $rows ) );
 
 		return implode( PHP_EOL, $lines ) . PHP_EOL;
 	}
@@ -187,6 +190,76 @@ final class ContentAuditReportWriter {
 			foreach ( $staleTemplates as $template => $siteIds ) {
 				$lines[] = sprintf( '- %s -- sites: %s', $template, implode( ', ', array_map( 'intval', array_keys( $siteIds ) ) ) );
 			}
+			$lines[] = '';
+		}
+
+		return $lines;
+	}
+
+	/**
+	 * Posts with post_status=future: the publish_future_post cron
+	 * event lives in the 'cron' option and does not travel with the
+	 * posts table, so migrated future posts never publish unless
+	 * re-scheduled. bin/schedule-future-posts.sh generates an editable
+	 * bash file of wp-cli commands (review/delete lines before running);
+	 * doing nothing leaves them permanently unpublished (a soft-draft).
+	 *
+	 * @param ContentAuditRow[] $rows
+	 *
+	 * @return string[]
+	 */
+	private function futurePostsSection( array $rows ): array {
+		$bySite = array();
+		foreach ( $rows as $row ) {
+			if ( $row->postStatus === 'future' ) {
+				$bySite[ $row->blogId ] = ( $bySite[ $row->blogId ] ?? 0 ) + 1;
+			}
+		}
+		if ( $bySite === array() ) {
+			return array();
+		}
+
+		ksort( $bySite );
+		$lines = array( '## Scheduled posts (post_status=future)', '' );
+		foreach ( $bySite as $blogId => $count ) {
+			$lines[] = sprintf( '- Site %d: %d post(s)', $blogId, $count );
+		}
+		$lines[] = '';
+		$lines[] = 'Cron events do not travel with the posts table: to keep these publishing on schedule after migration, run `bin/schedule-future-posts.sh` against the destination -- it writes an editable `var/reports/schedule-future-posts-*.sh` you review before running (posts whose date already passed publish on the next cron run). To leave them unpublished instead, do nothing.';
+		$lines[] = '';
+
+		return $lines;
+	}
+
+	/**
+	 * The Customizer's "Additional CSS" is stored as `custom_css`
+	 * posts (post_name/post_title = the theme stylesheet it belongs
+	 * to). The CSS migrates with the posts table but is keyed to the
+	 * old theme, so it is quoted here verbatim for review -- anything
+	 * still wanted can be pasted into the merged theme's style.css or
+	 * the destination Customizer.
+	 *
+	 * @param ContentAuditRow[] $rows
+	 *
+	 * @return string[]
+	 */
+	private function customCssSection( array $rows ): array {
+		$lines = array();
+		foreach ( $rows as $row ) {
+			if ( $row->postType !== 'custom_css' || trim( $row->content ) === '' ) {
+				continue;
+			}
+			if ( $lines === array() ) {
+				$lines[] = '## Customizer Additional CSS';
+				$lines[] = '';
+				$lines[] = 'CSS stored in `custom_css` posts (the Customizer\'s "Additional CSS" field), quoted verbatim. Copy anything still wanted into the merged theme\'s style.css or the destination Customizer.';
+				$lines[] = '';
+			}
+			$lines[] = sprintf( '### Site %d — %s (`%s`)', $row->blogId, $row->domain, $row->slug );
+			$lines[] = '';
+			$lines[] = '```css';
+			$lines[] = rtrim( $row->content );
+			$lines[] = '```';
 			$lines[] = '';
 		}
 

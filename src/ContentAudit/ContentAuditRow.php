@@ -21,6 +21,9 @@ final class ContentAuditRow {
 	 * @param string $templateStatus Why the template needs review
 	 *                               ('customized', 'stale-customization', ...),
 	 *                               '' when nothing per-page is needed.
+	 * @param string $content        Raw post_content; populated only for
+	 *                               post types the reports quote verbatim
+	 *                               (currently custom_css), '' otherwise.
 	 */
 	public function __construct(
 		public readonly int $blogId,
@@ -33,6 +36,7 @@ final class ContentAuditRow {
 		public readonly array $categoryFindings,
 		public readonly string $template = '',
 		public readonly string $templateStatus = '',
+		public readonly string $content = '',
 	) {
 	}
 

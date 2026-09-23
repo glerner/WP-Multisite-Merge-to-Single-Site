@@ -7,9 +7,10 @@ namespace MergeMultisite\Config;
 use MergeMultisite\Config\Endpoint\EndpointResolvers;
 
 /**
- * Loads and validates `config.php`, `sites.php`, `option-keys.php`, and
- * `term-overrides.php` from the project's `config/` directory, producing
- * a single validated MergeConfig.
+ * Loads and validates `config.php`, `sites.php`, `option-keys.php`,
+ * `term-overrides.php`, `shortcode-ignore.php`, and `plugin-roles.php`
+ * from the project's `config/` directory, producing a single validated
+ * MergeConfig.
  *
  * Every config file is optional except `config.php`; the others fall
  * back to sensible empty defaults so the tools remain usable before
@@ -98,6 +99,7 @@ final class ConfigLoader {
 			),
 			spreadsheetFormat: $spreadsheetFormat,
 			mainSite: isset( $config['main_site'] ) ? (int) $config['main_site'] : null,
+			pluginRoles: $this->optionalArrayFile( 'plugin-roles.php' ),
 		);
 	}
 

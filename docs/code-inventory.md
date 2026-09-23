@@ -25,9 +25,9 @@ Verify everything with: `composer test && composer phpcs && composer phpstan`.
 ## Configuration (`config/`)
 
 `ConfigLoader` reads `config.php` (required) plus optional
-`sites.php`, `option-keys.php`, `term-overrides.php`, `shortcode-ignore.php`
-and produces one `MergeConfig`. All real config files are gitignored; each has
-a `*.sample.php` committed.
+`sites.php`, `option-keys.php`, `term-overrides.php`, `shortcode-ignore.php`,
+`plugin-roles.php` and produces one `MergeConfig`. All real config files
+are gitignored; each has a `*.sample.php` committed.
 
 - `config.php` — DB endpoints, `destination_url`, `excluded_post_types`,
   `excluded_post_statuses`, `term_merge_rule`, `main_site` (blog_id whose
@@ -41,6 +41,9 @@ a `*.sample.php` committed.
 - `shortcode-ignore.php` — shortcode tag names the audit should not report
   (prose/dump noise), one per line, brackets optional.
 - `term-overrides.php` — manual term-label merge decisions.
+- `plugin-roles.php` — overrides for `PluginUsageRollup`: add/extend
+  `conflict_families` (`'-slug'` removes a built-in member), `signal_map`
+  aliases, and `not_a_plugin` tokens. Augments the built-ins.
 
 ### DB endpoints (`src/Config/Endpoint/`)
 
@@ -103,12 +106,14 @@ Detectors (`src/ContentAudit/Detectors/`):
   (a page full of `uagb/*` breaks if Spectra isn't installed).
 
 `PluginUsageRollup` groups detector labels into plugin entities via
-`SIGNAL_MAP` (alias → display name + candidate slugs), `NOT_A_PLUGIN`
+`SIGNAL_MAP` (token → `name` + `slugs` candidates), `NOT_A_PLUGIN`
 (core/platform labels), then slug-prefix matching against installed plugins.
-Output: `used` / `not_installed` / `not_detected` (each entry carries
-`has_data` + footprint summary from the callable) / `conflicts`
-(`CONFLICT_FAMILIES`: same-role plugins co-active per site — SMTP, forms,
-SEO, caching, image optimization, CDN, security, backups, page builders).
+All three built-in lists are augmented by `config/plugin-roles.php`
+(constructor arg). Output: `used` / `not_installed` / `not_detected`
+(each entry carries `has_data` + footprint summary from the callable) /
+`conflicts` (`CONFLICT_FAMILIES`: same-role plugins co-active per site —
+SMTP, forms, SEO, comment spam, caching, image optimization, CDN,
+security, backups, page builders).
 
 ## Migration support (`src/Migration/`, `src/Destination/`)
 

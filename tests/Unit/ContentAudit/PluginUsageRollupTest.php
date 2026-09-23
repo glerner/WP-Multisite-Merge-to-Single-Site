@@ -189,10 +189,106 @@ final class PluginUsageRollupTest extends TestCase {
 		self::assertSame( array(), $result['conflicts'] );
 	}
 
+	public function testConfigAddsNewConflictFamily(): void {
+		$rollup = new PluginUsageRollup(
+			array(
+				'conflict_families' => array(
+					'Membership' => array( 'memberpress', 'restrict-content' ),
+				),
+			)
+		);
+
+		$result = $rollup->build(
+			array(),
+			array( 'memberpress', 'restrict-content' ),
+			array(
+				'memberpress'      => array( 20, 58 ),
+				'restrict-content' => array( 58 ),
+			)
+		);
+
+		self::assertArrayHasKey( 'Membership', $result['conflicts'] );
+		self::assertSame( array( 58 ), $result['conflicts']['Membership']['overlap'] );
+	}
+
+	public function testConfigAppendsAndRemovesFamilyMembers(): void {
+		$rollup = new PluginUsageRollup(
+			array(
+				'conflict_families' => array(
+					'Mail delivery / SMTP' => array( 'my-smtp-plugin', '-mailinblue' ),
+				),
+			)
+		);
+
+		// mailinblue was removed from the family; my-smtp-plugin joined it.
+		$result = $rollup->build(
+			array(),
+			array( 'wp-mail-smtp', 'mailinblue', 'my-smtp-plugin' ),
+			array(
+				'wp-mail-smtp'   => array( 20 ),
+				'mailinblue'     => array( 20 ),
+				'my-smtp-plugin' => array( 20 ),
+			)
+		);
+
+		$smtp = $result['conflicts']['Mail delivery / SMTP'];
+		self::assertArrayNotHasKey( 'mailinblue', $smtp['slugs'] );
+		self::assertArrayHasKey( 'my-smtp-plugin', $smtp['slugs'] );
+		self::assertSame( array( 20 ), $smtp['overlap'] );
+	}
+
+	public function testConfigSignalMapAndNotAPluginOverrides(): void {
+		$rollup = new PluginUsageRollup(
+			array(
+				'signal_map'   => array(
+					'mywidget'   => array(
+			'name' => 'My Widget',
+			'slugs' => array( 'my-widget' ),
+				),
+					// Legacy positional form array(name, slugs) is also accepted.
+					'legacytool' => array( 'Legacy Tool', array( 'legacy-tool' ) ),
+				),
+				'not_a_plugin' => array( 'mycorething' ),
+			)
+		);
+
+		$rows = array(
+			$this->makeRow(
+				20,
+				array(
+				'blocks' => array( 'mywidget/block' ),
+				'shortcodes' => array( 'mycorething' ),
+				)
+			),
+			$this->makeRow( 33, array( 'blocks' => array( 'legacytool/gallery' ) ) ),
+		);
+
+		$result = $rollup->build( $rows, array( 'my-widget' ), array( 'my-widget' => array( 20 ) ) );
+
+		self::assertArrayHasKey( 'My Widget', $result['used'] );
+		self::assertSame( 'my-widget', $result['used']['My Widget']['slug'] );
+		// Positional config resolved too; legacy-tool is not installed.
+		self::assertArrayHasKey( 'Legacy Tool', $result['not_installed'] );
+		// The extra not-a-plugin token suppresses the leftover signal.
+		self::assertCount( 1, $result['not_installed'] );
+	}
+
 	/**
-	 * @param array<string, string[]> $findings
+	 * Build a minimal audit row: a published page on blog $blogId whose
+	 * only interesting data is the detector findings map.
+	 *
+	 * @param array<string, string[]> $findings Detector category => labels.
 	 */
 	private function makeRow( int $blogId, array $findings ): ContentAuditRow {
-		return new ContentAuditRow( $blogId, 'example.com', 1, 'page', 'publish', 'slug', 'My Post', $findings );
+		return new ContentAuditRow(
+			blogId: $blogId,
+			domain: 'example.com',
+			postId: 1,
+			postType: 'page',
+			postStatus: 'publish',
+			slug: 'slug',
+			postTitle: 'My Post',
+			categoryFindings: $findings,
+		);
 	}
 }

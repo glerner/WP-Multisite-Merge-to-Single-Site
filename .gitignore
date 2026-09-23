@@ -55,6 +55,8 @@ commit-message.txt
 /config/sites.php
 /config/option-keys.php
 /config/term-overrides.php
+/config/plugin-roles.php
+/config/shortcode-ignore.php
 /var/logs/*
 /var/reports/*
 /var/state/*

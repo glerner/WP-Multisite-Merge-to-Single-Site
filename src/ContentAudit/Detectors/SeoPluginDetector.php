@@ -23,6 +23,7 @@ final class SeoPluginDetector implements ContentDetectorInterface {
 		'_genesis_title' => 'The SEO Framework (legacy)',
 		'rank_math_' => 'Rank Math',
 		'_aioseo_' => 'All in One SEO',
+		'_sq_' => 'Squirrly SEO',
 	);
 
 	public function category(): string {

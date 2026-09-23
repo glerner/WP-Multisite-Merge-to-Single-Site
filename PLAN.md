@@ -204,7 +204,7 @@ one instead.
   [
       'blog_id' => 12,
       'domain'  => 'molten-salt-reactor.glerner.com',
-      'include' => false,
+      'include' => false, // will be extracted to a separate WP site
   ],
   ```
 - Defaults to `include = true` for every non-deleted site
@@ -298,6 +298,18 @@ fixing the byte-length prefixes PHP's serialization format requires
   included by default but flagged distinctly in reports (config flags
   let you instead fully exclude trash, or exclude drafts/private too,
   per run).
+- **`post_status=future` (scheduled posts)**: migrate the row with its
+  `post_date`, but the `publish_future_post` cron event lives in the
+  `cron` option and does NOT travel. After migration,
+  `bin/schedule-future-posts.sh --url=<dest>` writes an **editable**
+  `var/reports/schedule-future-posts-*.sh` — one
+  `wp_schedule_single_event( post_date_gmt, publish_future_post, [id] )`
+  line per post with a `# "title" -- scheduled for <date>` comment —
+  which you review/prune before running (a past-dated post publishes on
+  the next cron run). Deliberately not running it leaves the posts
+  permanently unpublished — an acceptable "soft-draft" for low-value
+  auto-generated content. Review cron with `wp cron event list` (or the
+  WP Crontrol plugin). The audit summary counts future posts per site.
 - `postmeta` migrated key-for-key, with `SerializedDataRewriter` fixing
   any embedded IDs/URLs (e.g. `_thumbnail_id`, ACF field references,
   page builder data referencing other post IDs).
@@ -318,6 +330,24 @@ fixing the byte-length prefixes PHP's serialization format requires
   56 `flamingo_contact` posts (address-book entries, sites
   1/20/49/58/65) and zero `flamingo_inbound` submissions; keeping it =
   keep the post type included + Flamingo installed on destination.
+- **`product_variation` (WooCommerce)**: migrate normally — it is real
+  data — but it has no frontend URL of its own (it renders inside the
+  parent `product`), so the audit labels it non-frontend rather than
+  assigning it a template. Its `post_parent` → product link is already
+  covered by the two-pass parent fix.
+- **Theme-scoped WP storage types**: `wp_global_styles` (per-theme
+  theme.json customizations) and `wp_navigation` (block nav menus) are
+  keyed to the source stylesheet in `post_name`, same as
+  `wp_template`/`wp_template_part` — they get the same
+  retag-or-leave-dormant decision on merge. `custom_css` (Customizer
+  Additional CSS) migrates with the posts table but is keyed to the old
+  theme; the audit summary quotes each site's CSS verbatim for manual
+  copying.
+- **Plugin-internal post types** (Jetpack sitemap/migration rows
+  `jp_sitemap`, `jp_sitemap_master`, `jp_img_sitemap`,
+  `jetpack_migration`; error logs like `asa-errors`; caches like
+  `oembed_cache`): not content — exclude via `excluded_post_types` in
+  `config.php`; the plugin regenerates them.
 - **Contact page normalization**: a configurable list of known contact
   page slugs/paths across sites (e.g. `/contact/`, `/contact-me/`,
   and any others discovered during audit) is treated as one logical
@@ -325,9 +355,9 @@ fixing the byte-length prefixes PHP's serialization format requires
   URL/slug to `/contact/`** and records every other variant in the
   redirect map so old links resolve correctly. It does **not** attempt
   to auto-convert other contact-form plugins' shortcodes/blocks into
-  SureForms markup — rebuilding the actual form is a manual step (your
+  your chosen form plugin markup — rebuilding the actual form is a manual step (the
   `site-audit.php` tool, §8, will tell you exactly which pages use which
-  form plugin so you know which ones need rebuilding in SureForms and
+  form plugin so you know which ones need rebuilding in your chosen form plugin and
   which old plugins can then be deactivated).
 
 ### 7.2 Media / attachments
@@ -426,7 +456,12 @@ Given that, rather than guessing at a merged menu structure, v1:
   `nav_menu` terms + `nav_menu_item` posts, not assigned to any theme
   location — inactive/orphaned, per your confirmation), with item
   targets (`_menu_item_object_id`) rewritten via IdMap so they still
-  point at the correct (possibly-recategorized) posts/pages.
+  point at the correct (possibly-recategorized) posts/pages —
+  **plus** the block-era equivalent: `wp_navigation` posts (WP 5.9+
+  store menus as posts containing navigation blocks). The `ref` post
+  ID inside `<!-- wp:navigation {"ref":123} -->` markup — in template
+  parts, `wp_navigation` posts, and pages — must be rewritten via
+  IdMap too.
 - **Also generates a plain-text/Markdown tree view** of every included
   site's menu structure (labels, URLs, nesting) as a
   `menus-overview.md`/`.json` report — a fast reference for you to
@@ -449,7 +484,7 @@ lists which `wp_options` keys to bring over per plugin. Seeded from the
 plugin slugs you listed across your sites/clients (see below); easily
 extended for anything not covered.
 
-**Plugin inclusion rule** (revised per your feedback): the migrator
+**Plugin inclusion rule**: the migrator
 considers a plugin's data eligible for migration if the plugin is
 **installed on the source site, whether currently active or not** (you
 pointed out things like `query-monitor`, or a migration tool you only
@@ -485,18 +520,16 @@ provided across your sites/clients:
     `wp-migrate-db`, `prime-mover`, `duplicator-pro`, and similar. These
     are flagged in the audit report as "detected, intentionally
     excluded — reconfigure manually on destination" rather than
-    migrated. Any older/replaced backup plugin's data (you mentioned an
-    older backup plugin superseded by UpdraftPlus) is excluded outright
+    migrated. Any older/replaced backup plugin's data is excluded outright
     as obsolete.
   - **Exclude as dev-only / no meaningful DB footprint**:
-    `query-monitor` (confirmed by you as unlikely to have DB data worth
-    migrating).
+    `query-monitor` (unlikely to have DB data worth migrating).
   - **Pods — decided: detector only, no adapter.** You installed the
     plugin but never built Pod content types, so there's no custom
     table data to migrate. The integrity checker's `pods-detection`
     section stays (it confirms that at a glance and catches any Pods
     tables on a future reuse of this tool), but no `PodsAdapter` gets
-    written.
+    written until we know what data to adapt.
   - Everything else you listed (`ai-engine`, `akismet`,
     `advanced-custom-fields`, `google-site-kit`, `instant-images`,
     `litespeed-cache`/`object-cache.php` (server/cache config, not
@@ -506,7 +539,7 @@ provided across your sites/clients:
     generic-options entry where it's a simple settings array, and be
     listed as "no adapter yet" in the report otherwise — nothing
     migrates silently without appearing in a report first.
-  - **Decided so far against the real DB**: `akismet` → include
+  - **Decided so far based on the real DB**: `akismet` → include
     (`akismet_*`). `flamingo` → keep its `flamingo_contact` CPT (§7.1);
     no `flamingo_inbound` submissions exist. `ai-engine`, `gl-reinvent`,
     `greenshift-*`, `instant-images`, `mailin`, `media-library-assistant`,
@@ -516,7 +549,7 @@ provided across your sites/clients:
     (options/postmeta/posts/tables all empty); suppressed in config
     rather than given exclude rules since there is simply nothing to
     migrate. `000-prime-mover-constants` → exclude.
-  - Your two custom plugins (`gl-block-bad-logins`,
+  - Your two old custom plugins (`gl-block-bad-logins`,
     `gl-debug-mode-only-you.php`) are **ignored completely**, per your
     instruction — not even reported.
 
@@ -533,7 +566,7 @@ what changes:
   `https://website-tech.glerner.com/some-other-post/`). All such
   self-referential absolute URLs, across post content, postmeta,
   widget/menu data, and migrated options, are rewritten to
-  `https://glerner.com/...` (using your configured `destination_url`)
+  your configured `destination_url`
   with the correct new path (through the category/slug the post now
   lives at).
 - Links to **excluded** sites (e.g.
@@ -542,7 +575,7 @@ what changes:
 - You explicitly do **not** want source hostnames swapped for a
   *local* staging hostname (e.g. `*.lndo.site`) — that's correctly out
   of scope per §2; `destination_url` should be set to the real eventual
-  production domain (`glerner.com`) even while testing locally, and
+  production domain even while testing locally, and
   your normal Local↔production URL-swap workflow handles the
   local-environment part separately, as it always would for any WP
   site move.
@@ -569,7 +602,7 @@ what changes:
 
 ## 8. Content/plugin-usage audit tool (`bin/site-audit.php`)
 
-A new, separate, **read-only** tool answering: *"across this site (or
+A separate, **read-only** tool answering: *"across this site (or
 subsite, or whole multisite), what non-core blocks and which
 content-affecting plugins are actually in use, and on which
 posts/pages?"* — so you can decide which duplicate plugin to standardize
@@ -610,13 +643,17 @@ edits, both before and after migration.
     for one plugin/feature, so adding a new detector for a plugin I
     haven't seen yet is a short, testable addition.
 - **Output**: CSV (one row per post/page, columns for
-  site/URL/post-type/status/each detected category, e.g. `blocks_found`,
-  `form_plugin`, `page_builder`, `gallery_plugin`, `video_type`,
-  `seo_plugin`, `ecommerce_plugin`), designed to open cleanly in Excel
-  or be pasted straight into Google Sheets; a JSON version too for any
-  future tooling. A summary sheet/section tallies "N pages use Contact
-  Form 7, M pages use WPForms" etc. to make the "which plugin do I
-  standardize on, and which pages need editing" decision fast.
+  site/URL/post-type/status/`template`/`template_status`/each detected
+  category, e.g. `blocks_found`, `form_plugin`, `page_builder`,
+  `gallery_plugin`, `video_type`, `seo_plugin`, `ecommerce_plugin`),
+  plus **XLSX Spreadsheet** (frozen header + identity columns, autofilter,
+  monospace font — `spreadsheet_format` picks xlsx/csv/both, and xlsx
+  falls back to CSV when ext-zip is missing), a JSON version for any
+  future tooling, and a `-summary.md` (plugin usage + role conflicts,
+  page templates needing work, scheduled-posts count, and a verbatim
+  Customizer Additional CSS appendix). The tallies make the "which
+  plugin do I standardize on, and which pages need editing" decision
+  fast.
 - Independent of the migration pipeline — usable standalone, before you
   even decide on this whole merge project, or afterward on the finished
   single site to verify cleanup.
@@ -631,7 +668,7 @@ checks). Checks include:
 - Every post's `post_author` refers to an existing user.
 - Every post's `post_parent` refers to an existing post (or 0).
 - Every attachment's file exists on disk at the expected path
-  (auto-detecting modern vs. legacy upload layout); flags missing
+  (auto-detecting modern vs. legacy upload layout); flags any missing
   files.
 - **Media file report, clearly split into separate, sorted sections**
   (a file can legitimately appear in more than one section, e.g. it's
@@ -723,7 +760,7 @@ blocking issues are found; `--strict` flag to also fail on warnings.
   (Data Definition Language is a subset of SQL commands used to define, modify, and delete database schema objects such as tables, indexes, views, and stored procedures.)
 - Batching: configurable batch size (default e.g. 200 posts/comments per
   batch) — matters for reusability on larger multisites even though
-  yours is small.
+  many are small.
 - Idempotency safeguard: every inserted destination row's origin
   (`old_site_id`, `old_table`, `old_id`) is recorded in a small
   migration-tracking table (`{prefix}_merge_migration_map`) created on
@@ -733,8 +770,7 @@ blocking issues are found; `--strict` flag to also fail on warnings.
 - Structured logging (`var/logs/migrate-{timestamp}.log`) at
   info/warning/error levels; a final summary (counts per entity type,
   per site, elapsed time, warnings) printed to console and saved.
-- **Recommended workflow** (matches how you said you'll actually use
-  this): run the migration into a **local** destination WordPress install
+- **Recommended workflow** : run the migration into a **local** destination WordPress install
   first, verify the result thoroughly in the browser/admin, and only then
   promote that verified database + uploads to production using your normal
   tooling (a `.sql` export, or UpdraftPlus with its S3 connection) — this
@@ -743,7 +779,7 @@ blocking issues are found; `--strict` flag to also fail on warnings.
 
 ## 11. Testing & code quality
 
-- `composer.json` targeting PHP 8.2+ (you're on 8.4 locally), its own
+- `composer.json` targeting PHP 8.2+ , its own
   self-contained PHPUnit 11 setup (see §3.1 re: `phpunit-testing`).
 - **PHPUnit** unit tests for all pure logic: `IdMap`, term-merge
   case/most-used resolution, `SerializedDataRewriter`, media dedup/hash
@@ -808,7 +844,8 @@ these are scheduled work:
   raw-data extraction) is explicitly doing the preliminary detection/
   inventory work for it.
 - **Per-builder "content inventory" exporter.** Extend `site-audit.php`
-  (currently the `needs-review` CSV with raw dumps) into a structured,
+  (the `site-audit-needs-review-*.csv` — a filtered subset of the full
+  audit with raw data dumps per plugin; still CSV-only) into a structured,
   tree-view-like inventory of every element on a page per page builder
   (Elementor's `_elementor_data` JSON tree; Divi's shortcode attribute
   pairs; block JSON attributes), exportable to CSV/Google Sheets/MySQL.

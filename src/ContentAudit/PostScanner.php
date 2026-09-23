@@ -252,6 +252,11 @@ final class PostScanner {
 					categoryFindings: $categoryFindings,
 					template: $templateInfo['template'],
 					templateStatus: $templateInfo['status'],
+					// custom_css posts hold the Customizer's "Additional
+					// CSS" verbatim -- the report quotes them so it can be
+					// moved into the merged theme. Other types' content is
+					// already covered by detector findings.
+					content: $scannedPost->postType === 'custom_css' ? $scannedPost->content : '',
 				),
 				'post' => $scannedPost,
 			);

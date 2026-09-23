@@ -249,7 +249,7 @@ foreach ( $sites as $site ) {
 }
 $footprintDetector = new PluginFootprintDetector();
 $allBlogIds = array_map( static fn ( $site ): int => $site->blogId, $sites );
-$pluginUsage = ( new PluginUsageRollup() )->build(
+$pluginUsage = ( new PluginUsageRollup( $config->pluginRoles ) )->build(
 	$rows,
 	$inventory->installedSlugs(),
 	$activeBySlug,
