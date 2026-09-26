@@ -52,6 +52,21 @@ final class TemplateShotPlan {
 	);
 
 	/**
+	 * Milliseconds to wait after page load so webfonts and lazy media
+	 * settle -- guards against captures taken mid-layout-shift.
+	 */
+	public const SETTLE_WAIT_MS = 600;
+
+	/**
+	 * Viewport height floor for element shots. WordPress pages normally
+	 * scroll the document (element content outside the viewport still
+	 * rasterizes), but a theme using an inner scroll container clips
+	 * whatever is scrolled out of it -- the element must fit inside the
+	 * scroller's height, so element shots get a tall viewport.
+	 */
+	public const ELEMENT_VIEWPORT_HEIGHT = 2400;
+
+	/**
 	 * The site's front URL, e.g. "https://example.com/".
 	 */
 	public function siteUrl( Site $site ): string {
@@ -64,7 +79,7 @@ final class TemplateShotPlan {
 	 * @param array<int, array{post_name:string, post_type:string, post_status:string, theme:string}> $templateRows
 	 *        Rows from TemplateInventory for this one site.
 	 *
-	 * @return array{shots: array<int, array{slug:string, url:string, selector:?string}>,
+	 * @return array{shots: array<int, array{slug:string, url:string, selector:?string, javascript:?string}>,
 	 *               skipped: array<string, string>,
 	 *               stale: array<string, string>}
 	 *         skipped: slug => why no shot was planned.
@@ -156,6 +171,7 @@ final class TemplateShotPlan {
 				'slug' => $slug,
 				'url' => $this->partUrl( $slug, $context, $shotUrlByTemplate, $resolvedFront, $home ) ?? $home,
 				'selector' => self::PART_SELECTORS[ $slug ],
+				'javascript' => $this->overlayGuardJs( self::PART_SELECTORS[ $slug ] ),
 			);
 		}
 		foreach ( array_keys( $parts ) as $slug ) {
@@ -176,6 +192,7 @@ final class TemplateShotPlan {
 				'slug' => $slug,
 				'url' => $url,
 				'selector' => self::PART_SELECTORS[ $slug ],
+				'javascript' => $this->overlayGuardJs( self::PART_SELECTORS[ $slug ] ),
 				);
 			} else {
 				$including = $context->partUsage[ $slug ] ?? array();
@@ -232,7 +249,7 @@ final class TemplateShotPlan {
 	 *
 	 * @param array<string, string> $shotUrlByTemplate
 	 *
-	 * @return array<int, array{slug:string, url:string, selector:null}>
+	 * @return array<int, array{slug:string, url:string, selector:null, javascript:null}>
 	 */
 	private function fullPageShots( array $shotUrlByTemplate ): array {
 		$shots = array();
@@ -241,6 +258,7 @@ final class TemplateShotPlan {
 			'slug' => $slug,
 			'url' => $url,
 			'selector' => null,
+			'javascript' => null,
 			);
 		}
 
@@ -291,17 +309,54 @@ final class TemplateShotPlan {
 	}
 
 	/**
+	 * JavaScript run before an element shot: scroll the target into
+	 * view, then hide position:fixed/sticky elements that overlap it.
+	 * Floating headers, cookie bars, back-to-top buttons, and chat
+	 * widgets would otherwise paint into the element's clip.
+	 * visibility:hidden keeps layout (unlike display:none), and
+	 * elements inside or containing the target are never hidden -- a
+	 * sticky nav inside a header part belongs in the shot.
+	 */
+	public function overlayGuardJs( string $selector ): string {
+		$jsSelector = json_encode( $selector );
+		return <<<JS
+(() => {
+  const t = document.querySelector({$jsSelector});
+  if (!t) return;
+  t.scrollIntoView({ block: 'nearest' });
+  const r = t.getBoundingClientRect();
+  for (const el of document.querySelectorAll('body *')) {
+    if (el.contains(t) || t.contains(el)) continue;
+    const p = getComputedStyle(el).position;
+    if (p !== 'fixed' && p !== 'sticky') continue;
+    const er = el.getBoundingClientRect();
+    if (er.bottom <= r.top || er.top >= r.bottom) continue;
+    el.style.visibility = 'hidden';
+  }
+})();
+JS;
+	}
+
+	/**
 	 * Renders the shots for every site as shot-scraper multi YAML.
 	 *
-	 * @param array<int, array{slug:string, url:string, selector:?string, output:string}> $entries
+	 * @param array<int, array{slug:string, url:string, selector:?string, javascript:?string, output:string}> $entries
 	 */
 	public function toYaml( array $entries ): string {
 		$yaml = '';
 		foreach ( $entries as $entry ) {
 			$yaml .= '- output: ' . $entry['output'] . "\n";
 			$yaml .= '  url: ' . $entry['url'] . "\n";
+			$yaml .= '  retina: true' . "\n";
+			$yaml .= '  wait: ' . self::SETTLE_WAIT_MS . "\n";
+			$yaml .= '  wait_for: \'document.fonts.status === "loaded"\'' . "\n";
 			if ( $entry['selector'] !== null ) {
 				$yaml .= '  selector: "' . str_replace( '"', '\\"', $entry['selector'] ) . '"' . "\n";
+				$yaml .= '  height: ' . self::ELEMENT_VIEWPORT_HEIGHT . "\n";
+				$yaml .= '  javascript: |' . "\n";
+				foreach ( explode( "\n", (string) $entry['javascript'] ) as $jsLine ) {
+					$yaml .= '    ' . $jsLine . "\n";
+				}
 			}
 		}
 

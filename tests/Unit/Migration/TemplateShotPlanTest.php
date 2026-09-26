@@ -307,12 +307,14 @@ final class TemplateShotPlanTest extends TestCase {
 					'slug' => 'header',
 					'url' => 'https://example.com/',
 					'selector' => 'header, .site-header',
+					'javascript' => "(() => {\n  // overlay guard\n})();",
 					'output' => '/out/20-header.png',
 				),
 				array(
 					'slug' => 'index',
 					'url' => 'https://example.com/',
 					'selector' => null,
+					'javascript' => null,
 					'output' => '/out/20-index.png',
 				),
 			)
@@ -321,10 +323,33 @@ final class TemplateShotPlanTest extends TestCase {
 		self::assertSame(
 			"- output: /out/20-header.png\n"
 			. "  url: https://example.com/\n"
+			. "  retina: true\n"
+			. "  wait: 600\n"
+			. "  wait_for: 'document.fonts.status === \"loaded\"'\n"
 			. "  selector: \"header, .site-header\"\n"
+			. "  height: 2400\n"
+			. "  javascript: |\n"
+			. "    (() => {\n"
+			. "      // overlay guard\n"
+			. "    })();\n"
 			. "- output: /out/20-index.png\n"
-			. "  url: https://example.com/\n",
+			. "  url: https://example.com/\n"
+			. "  retina: true\n"
+			. "  wait: 600\n"
+			. "  wait_for: 'document.fonts.status === \"loaded\"'\n",
 			$yaml
 		);
+	}
+
+	public function testOverlayGuardJsEmbedsSelectorAndNeverHidesTargetSubtree(): void {
+		$plan = new TemplateShotPlan();
+
+		$js = $plan->overlayGuardJs( 'header, .site-header' );
+
+		self::assertStringContainsString( 'document.querySelector("header, .site-header")', $js );
+		// Only fixed/sticky elements overlapping the target are hidden,
+		// and never the target itself, its ancestors, or its children.
+		self::assertStringContainsString( 'position', $js );
+		self::assertStringContainsString( "visibility = 'hidden'", $js );
 	}
 }

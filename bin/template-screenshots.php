@@ -146,7 +146,11 @@ $failures = array();
 foreach ( $entries as $entry ) {
 	$cmd = 'shot-scraper ' . escapeshellarg( $entry['url'] )
 		. ' -o ' . escapeshellarg( $entry['output'] )
-		. ' --retina';
+		. ' --retina'
+		// Let webfonts and lazy media settle so the shot is not taken
+		// mid-layout-shift; wait_for fails fast enough under --timeout.
+		. ' --wait ' . TemplateShotPlan::SETTLE_WAIT_MS
+		. ' --wait-for ' . escapeshellarg( 'document.fonts.status === "loaded"' );
 	if ( $entry['selector'] !== null ) {
 		$cmd .= ' --selector ' . escapeshellarg( $entry['selector'] )
 			// Element shots wait for the selector to be VISIBLE; a part
@@ -154,7 +158,14 @@ foreach ( $entries as $entry ) {
 			// customization left the live part empty) would otherwise
 			// burn 30s per shot on Playwright's stability wait. 10s is
 			// plenty for a local site to paint.
-			. ' --timeout 10000';
+			. ' --timeout 10000'
+			// Themes with an inner scroll container clip element
+			// content scrolled out of it -- give element shots a tall
+			// viewport floor so the part fits the scroller.
+			. ' -h ' . TemplateShotPlan::ELEMENT_VIEWPORT_HEIGHT
+			// Hide fixed/sticky chrome overlapping the target so it
+			// does not paint into the element's clip.
+			. ' --javascript ' . escapeshellarg( (string) $entry['javascript'] );
 	}
 
 	exec( $cmd . ' 2>&1', $output, $exitCode );

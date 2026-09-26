@@ -24,6 +24,7 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+auth.json
 
 # Logs
 *.log
