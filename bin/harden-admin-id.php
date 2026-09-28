@@ -84,7 +84,9 @@ if ( $conflict !== null ) {
 	exit( 1 );
 }
 
-$statements = $renumberer->buildStatements( $oldId, $newId, $config->destination->tablePrefix );
+$dmlStatements = $renumberer->buildDmlStatements( $oldId, $newId, $config->destination->tablePrefix );
+$ddlStatements = $renumberer->buildDdlStatements( $newId, $config->destination->tablePrefix );
+$statements    = array( ...$dmlStatements, ...$ddlStatements );
 
 $logger->info(
 	sprintf(
@@ -103,10 +105,14 @@ if ( $args->has( 'dry-run' ) ) {
 }
 
 $pdo = $destination->pdo();
+
+// Run DML (UPDATEs) inside an atomic transaction.
+// Non-transactional DDL (ALTER TABLE) runs after commit because MySQL
+// implicitly commits around DDL, which would break rollback.
 $pdo->beginTransaction();
 
 try {
-	foreach ( $statements as $statement ) {
+	foreach ( $dmlStatements as $statement ) {
 		$pdo->exec( $statement );
 	}
 	$pdo->commit();
@@ -114,6 +120,14 @@ try {
 	$pdo->rollBack();
 	$logger->error( sprintf( 'Renumbering failed, rolled back: %s', $exception->getMessage() ) );
 	exit( 1 );
+}
+
+try {
+	foreach ( $ddlStatements as $statement ) {
+		$pdo->exec( $statement );
+	}
+} catch ( \Throwable $exception ) {
+	$logger->warning( sprintf( 'User renumbered, but AUTO_INCREMENT update failed: %s', $exception->getMessage() ) );
 }
 
 $logger->info(

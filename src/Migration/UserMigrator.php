@@ -80,7 +80,9 @@ final class UserMigrator {
 					array( 'key' => $capKey )
 				) as $row
 			) {
-				$caps = @unserialize( (string) $row['meta_value'] );
+				// Security: 'allowed_classes' => false ensures only primitive arrays are restored,
+				// preventing PHP Object Injection from compromised usermeta.
+				$caps = @unserialize( (string) $row['meta_value'], array( 'allowed_classes' => false ) );
 				if ( ! is_array( $caps ) ) {
 					continue;
 				}

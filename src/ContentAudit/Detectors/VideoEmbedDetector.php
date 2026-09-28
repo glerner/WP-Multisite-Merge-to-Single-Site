@@ -22,11 +22,11 @@ final class VideoEmbedDetector implements ContentDetectorInterface {
 		$found = array();
 		$content = $post->content;
 
-		if ( preg_match( '/wp:core-embed\/youtube|youtube\.com\/watch|youtu\.be\//i', $content ) ) {
+		if ( preg_match( '/wp:(?:core-embed\/)?youtube|providerNameSlug":"youtube"|youtube\.com\/(?:watch|embed|shorts)|youtu\.be\/|youtube-nocookie\.com\/embed/i', $content ) ) {
 			$found[] = 'YouTube';
 		}
 
-		if ( preg_match( '/wp:core-embed\/vimeo|vimeo\.com\//i', $content ) ) {
+		if ( preg_match( '/wp:(?:core-embed\/)?vimeo|providerNameSlug":"vimeo"|vimeo\.com\/(?:video\/)?[0-9]+|player\.vimeo\.com\/video/i', $content ) ) {
 			$found[] = 'Vimeo';
 		}
 

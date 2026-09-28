@@ -453,7 +453,9 @@ final class ContentAuditReportWriter {
 		// it to DejaVu Sans Mono on Linux. (Cascadia Mono, Menlo and
 		// ui-monospace all fall back to PROPORTIONAL fonts on Linux --
 		// worse than the Calibri default they were meant to replace.)
-		$spreadsheet->getDefaultStyle()->getFont()->setName( 'Consolas' );
+		$spreadsheet->getDefaultStyle()->getFont()
+			->setName( 'Consolas' )
+			->setSize( 12 );
 		$sheet       = $spreadsheet->getActiveSheet();
 		$sheet->setTitle( 'site-audit' );
 

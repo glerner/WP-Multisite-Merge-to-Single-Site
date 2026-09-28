@@ -62,7 +62,7 @@ final class Site {
 			deleted: $deleted,
 			included: $included,
 			categoryName: $override->categoryName ?? $title,
-			categorySlug: $override?->categorySlug,
+			categorySlug: $override->categorySlug ?? null,
 		);
 	}
 }

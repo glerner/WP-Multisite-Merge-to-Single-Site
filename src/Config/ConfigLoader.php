@@ -42,8 +42,17 @@ final class ConfigLoader {
 			throw new ConfigException( 'config.php is missing "destination_url".' );
 		}
 
-		$source = DatabaseConfig::fromArray( $this->resolveConnection( $config['source'], 'source' ), 'source' );
-		$destination = DatabaseConfig::fromArray( $this->resolveConnection( $config['destination'], 'destination' ), 'destination' );
+		$sourceDb = $this->resolveConnection( $config['source'], 'source' );
+		if ( isset( $sourceDb['uploads_path'] ) && is_string( $sourceDb['uploads_path'] ) ) {
+			$sourceDb['uploads_path'] = $this->expandHome( $sourceDb['uploads_path'] );
+		}
+		$destinationDb = $this->resolveConnection( $config['destination'], 'destination' );
+		if ( isset( $destinationDb['uploads_path'] ) && is_string( $destinationDb['uploads_path'] ) ) {
+			$destinationDb['uploads_path'] = $this->expandHome( $destinationDb['uploads_path'] );
+		}
+
+		$source      = DatabaseConfig::fromArray( $sourceDb, 'source' );
+		$destination = DatabaseConfig::fromArray( $destinationDb, 'destination' );
 
 		$sites = array();
 		foreach ( $this->optionalArrayFile( 'sites.php' ) as $entry ) {

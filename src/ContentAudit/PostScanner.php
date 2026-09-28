@@ -7,6 +7,7 @@ namespace MergeMultisite\ContentAudit;
 use MergeMultisite\ContentAudit\Detectors\ContentDetectorInterface;
 use MergeMultisite\Db\Connection;
 use MergeMultisite\Migration\PageTemplateResolver;
+use MergeMultisite\Migration\PostQueryHelper;
 use MergeMultisite\Migration\Site;
 
 /**
@@ -118,7 +119,7 @@ final class PostScanner {
 		$postsTable = $connection->siteTable( 'posts', $site->blogId );
 
 		$params = array();
-		$where = $this->postStatusClause( $excludedPostStatuses, $params ) . $this->postTypeClause( $postTypes, $excludedPostTypes, $params );
+		$where  = PostQueryHelper::postStatusClause( $excludedPostStatuses, $params ) . PostQueryHelper::postTypeClause( $postTypes, $excludedPostTypes, $params );
 
 		$posts = $connection->fetchAll(
 			"SELECT ID, post_type, post_status, post_title, post_name, post_content FROM {$postsTable} WHERE {$where}",
@@ -128,6 +129,7 @@ final class PostScanner {
 		$hits = array();
 		foreach ( $posts as $post ) {
 			$haystack = (string) $post['post_title'] . "\n" . (string) $post['post_content'];
+			$matched  = array();
 
 			foreach ( $needles as $needle ) {
 				// Word-boundary match, not a bare substring check --
@@ -140,17 +142,21 @@ final class PostScanner {
 				// that specific class of false positive fixed.
 				$pattern = '/\b' . preg_quote( $needle, '/' ) . '\b/i';
 				if ( preg_match( $pattern, $haystack ) === 1 ) {
-					$hits[] = array(
-						'blog_id' => $site->blogId,
-						'post_id' => (int) $post['ID'],
-						'post_type' => (string) $post['post_type'],
-						'post_status' => (string) $post['post_status'],
-						'post_title' => (string) $post['post_title'],
-						'post_name' => (string) $post['post_name'],
-						'matched_needle' => $needle,
-					);
-					break;
+					$matched[] = $needle;
 				}
+			}
+
+			// If at least one keyword matched, record this post as a hit.
+			if ( ! empty( $matched ) ) {
+				$hits[] = array(
+					'blog_id'        => $site->blogId,
+					'post_id'        => (int) $post['ID'],
+					'post_type'      => (string) $post['post_type'],
+					'post_status'    => (string) $post['post_status'],
+					'post_title'     => (string) $post['post_title'],
+					'post_name'      => (string) $post['post_name'],
+					'matched_needle' => implode( ', ', $matched ),
+				);
 			}
 		}
 
@@ -183,7 +189,7 @@ final class PostScanner {
 		$postMetaTable = $connection->siteTable( 'postmeta', $site->blogId );
 
 		$params = array();
-		$where = $this->postStatusClause( $excludedPostStatuses, $params ) . $this->postTypeClause( $postTypes, $excludedPostTypes, $params );
+		$where  = PostQueryHelper::postStatusClause( $excludedPostStatuses, $params ) . PostQueryHelper::postTypeClause( $postTypes, $excludedPostTypes, $params );
 
 		$posts = $connection->fetchAll(
 			"SELECT ID, post_type, post_status, post_name, post_title, post_content FROM {$postsTable} WHERE {$where}",
@@ -194,7 +200,7 @@ final class PostScanner {
 			return array();
 		}
 
-		$metaByPost = $this->fetchMetaForPosts( $connection, $postMetaTable, array_column( $posts, 'ID' ) );
+		$metaByPost = PostQueryHelper::fetchMetaForPosts( $connection, $postMetaTable, array_column( $posts, 'ID' ) );
 
 		// Site-local lookup maps so detectors can render names, not
 		// bare IDs: term/post IDs are per-site auto-increments, so
@@ -241,7 +247,7 @@ final class PostScanner {
 			);
 
 			$results[] = array(
-				'row' => new ContentAuditRow(
+				'row'  => new ContentAuditRow(
 					blogId: $site->blogId,
 					domain: $site->domain,
 					postId: $postId,
@@ -263,87 +269,5 @@ final class PostScanner {
 		}
 
 		return $results;
-	}
-
-	/**
-	 * Builds the post_status WHERE fragment: 'trash' and 'auto-draft'
-	 * are always excluded (never real content), plus whatever
-	 * excluded_post_statuses config adds (e.g. 'draft', 'inherit').
-	 *
-	 * @param string[]              $excludedPostStatuses
-	 * @param array<string, string> $params Bound parameters, appended.
-	 */
-	private function postStatusClause( array $excludedPostStatuses, array &$params ): string {
-		$statuses = array_values( array_unique( array_merge( array( 'trash', 'auto-draft' ), $excludedPostStatuses ) ) );
-
-		$placeholders = array();
-		foreach ( $statuses as $index => $status ) {
-			$key = 'post_status_' . $index;
-			$placeholders[] = ':' . $key;
-			$params[ $key ] = $status;
-		}
-
-		return sprintf( 'post_status NOT IN (%s)', implode( ', ', $placeholders ) );
-	}
-
-	/**
-	 * Builds the post_type WHERE fragment: an IN() allow-list when
-	 * $postTypes is given, otherwise a NOT IN() exclusion list (so an
-	 * explicit --post-types selection can still audit an excluded type
-	 * like "revision" on purpose).
-	 *
-	 * @param string[]              $postTypes
-	 * @param string[]              $excludedPostTypes
-	 * @param array<string, string> $params Bound parameters, appended.
-	 */
-	private function postTypeClause( array $postTypes, array $excludedPostTypes, array &$params ): string {
-		$types = $postTypes !== array() ? $postTypes : null;
-		$list = $types ?? $excludedPostTypes;
-
-		if ( $list === array() ) {
-			return '';
-		}
-
-		$placeholders = array();
-		foreach ( $list as $index => $postType ) {
-			$key = 'post_type_' . $index;
-			$placeholders[] = ':' . $key;
-			$params[ $key ] = (string) $postType;
-		}
-
-		return sprintf( ' AND post_type %s (%s)', $types === null ? 'NOT IN' : 'IN', implode( ', ', $placeholders ) );
-	}
-
-	/**
-	 * @param int[] $postIds
-	 *
-	 * @return array<int, array<string, string[]>>
-	 */
-	private function fetchMetaForPosts( Connection $connection, string $postMetaTable, array $postIds ): array {
-		$metaByPost = array();
-
-		// Chunked: MySQL caps a prepared statement at 65535
-		// placeholders, so a single IN() over a large site's posts
-		// would fail outright. Always chunk ID lists like this.
-		foreach ( array_chunk( $postIds, 5000 ) as $chunk ) {
-			$placeholders = array();
-			$params = array();
-			foreach ( $chunk as $index => $postId ) {
-				$key = 'post_id_' . $index;
-				$placeholders[] = ':' . $key;
-				$params[ $key ] = $postId;
-			}
-
-			$rows = $connection->fetchAll(
-				"SELECT post_id, meta_key, meta_value FROM {$postMetaTable} WHERE post_id IN (" . implode( ', ', $placeholders ) . ')',
-				$params
-			);
-
-			foreach ( $rows as $row ) {
-				$metaByPost[ (int) $row['post_id'] ][ (string) $row['meta_key'] ][] = (string) $row['meta_value'];
-			}
-		}
-
-		return $metaByPost;
 	}
 }

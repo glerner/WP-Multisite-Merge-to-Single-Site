@@ -198,7 +198,10 @@ final class PluginInventory {
 			return array();
 		}
 
-		$decoded = @unserialize( $value );
+		// Security: 'allowed_classes' => false prevents PHP Object Injection by ensuring
+		// unserialize() only instantiates primitive data types (arrays, strings, ints),
+		// never arbitrary PHP classes with magic methods (__wakeup, __destruct).
+		$decoded = @unserialize( $value, array( 'allowed_classes' => false ) );
 		if ( ! is_array( $decoded ) ) {
 			return array();
 		}
@@ -211,7 +214,8 @@ final class PluginInventory {
 			return array();
 		}
 
-		$decoded = @unserialize( $serialized );
+		// Security: 'allowed_classes' => false prevents PHP Object Injection.
+		$decoded = @unserialize( $serialized, array( 'allowed_classes' => false ) );
 		if ( ! is_array( $decoded ) ) {
 			return array();
 		}

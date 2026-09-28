@@ -131,7 +131,8 @@ final class OrphanedMediaFileCheck implements AuditCheckInterface {
 			$directory = dirname( $relativeFile );
 			$directory = $directory === '.' ? '' : $directory . '/';
 
-			$metadata = is_string( $row['metadata'] ) ? @unserialize( $row['metadata'] ) : false;
+			// Security: 'allowed_classes' => false prevents PHP Object Injection.
+			$metadata = is_string( $row['metadata'] ) ? @unserialize( $row['metadata'], array( 'allowed_classes' => false ) ) : false;
 			if ( ! is_array( $metadata ) ) {
 				continue;
 			}

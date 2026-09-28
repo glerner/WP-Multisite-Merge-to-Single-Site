@@ -31,7 +31,8 @@ final class MissingMediaCopyScriptWriterTest extends TestCase {
 		touch( $found );
 
 		$script = ( new MissingMediaCopyScriptWriter() )->generate(
-			array( $this->missingFinding( '2013/08/pic.png', 60, 100 ) ),
+			// blogId 60 = source subsite ID (e.g. sites/60/ or blogs.dir/60/), postId 100 = attachment post ID.
+			array( $this->missingFinding( relative: '2013/08/pic.png', blogId: 60, postId: 100 ) ),
 			array( $this->tempDir . '/search' ),
 			new UploadsPathResolver( $this->tempDir . '/uploads' )
 		);
@@ -52,7 +53,7 @@ final class MissingMediaCopyScriptWriterTest extends TestCase {
 		touch( $right );
 
 		$script = ( new MissingMediaCopyScriptWriter() )->generate(
-			array( $this->missingFinding( '2013/08/pic.png', 60, 100 ) ),
+			array( $this->missingFinding( relative: '2013/08/pic.png', blogId: 60, postId: 100 ) ),
 			array( $this->tempDir . '/search' ),
 			new UploadsPathResolver( $this->tempDir . '/uploads' )
 		);
@@ -63,7 +64,7 @@ final class MissingMediaCopyScriptWriterTest extends TestCase {
 
 	public function testMissingEverywhereGetsNotFoundComment(): void {
 		$script = ( new MissingMediaCopyScriptWriter() )->generate(
-			array( $this->missingFinding( '2013/08/nope.png', 60, 100 ) ),
+			array( $this->missingFinding( relative: '2013/08/nope.png', blogId: 60, postId: 100 ) ),
 			array( $this->tempDir . '/search' ),
 			new UploadsPathResolver( $this->tempDir . '/uploads' )
 		);
@@ -84,7 +85,7 @@ final class MissingMediaCopyScriptWriterTest extends TestCase {
 
 	public function testReturnsNullWhenNoSearchPathsConfigured(): void {
 		$script = ( new MissingMediaCopyScriptWriter() )->generate(
-			array( $this->missingFinding( '2013/08/pic.png', 60, 100 ) ),
+			array( $this->missingFinding( relative: '2013/08/pic.png', blogId: 60, postId: 100 ) ),
 			array(),
 			new UploadsPathResolver( $this->tempDir . '/uploads' )
 		);
@@ -92,6 +93,30 @@ final class MissingMediaCopyScriptWriterTest extends TestCase {
 		self::assertNull( $script );
 	}
 
+	public function testAmbiguousCandidatesEmitComment(): void {
+		// Two different folders, neither matches 2013/08/pic.png relative path.
+		touch( $this->tempDir . '/search/other/pic.png' );
+		mkdir( $this->tempDir . '/search/extra', 0775, true );
+		touch( $this->tempDir . '/search/extra/pic.png' );
+
+		$script = ( new MissingMediaCopyScriptWriter() )->generate(
+			array( $this->missingFinding( relative: '2013/08/pic.png', blogId: 60, postId: 100 ) ),
+			array( $this->tempDir . '/search' ),
+			new UploadsPathResolver( $this->tempDir . '/uploads' )
+		);
+
+		self::assertNotNull( $script );
+		self::assertStringContainsString( '# AMBIGUOUS:', $script );
+		self::assertStringContainsString( 'multiple candidates', $script );
+	}
+
+	/**
+	 * Helper to create a missing-file finding fixture.
+	 *
+	 * @param string $relative Path stored in _wp_attached_file (e.g. 2013/08/pic.png).
+	 * @param int    $blogId   Multisite subsite ID (e.g. 60 -> uploads/sites/60/).
+	 * @param int    $postId   Attachment post ID in wp_{blogId}_posts.
+	 */
 	private function missingFinding( string $relative, int $blogId, int $postId ): AuditFinding {
 		return AuditFinding::error(
 			'media-files.missing-file',

@@ -28,18 +28,9 @@ final class NeedsReviewDetector implements ContentDetectorInterface {
 	public function detect( ScannedPost $post ): array {
 		$found = array();
 
-		// Page builders (metasig + content signatures).
-		if ( $post->hasMetaKey( '_elementor_data' ) || $post->hasMetaKey( '_elementor_edit_mode' ) ) {
-			$found[] = 'Elementor';
-		}
-		if ( $post->metaValue( '_et_pb_use_builder' ) === 'on' || str_contains( $post->content, '[et_pb_section' ) ) {
-			$found[] = 'Divi';
-		}
-		if ( $post->hasMetaKey( '_fl_builder_data' ) || $post->hasMetaKey( '_fl_builder_enabled' ) ) {
-			$found[] = 'Beaver Builder';
-		}
-		if ( str_contains( $post->content, 'wp:tenweb' ) || $post->hasMetaKey( '_tenweb_builder' ) ) {
-			$found[] = '10Web Builder';
+		// Page builders (delegated to PageBuilderDetector).
+		foreach ( ( new PageBuilderDetector() )->detect( $post ) as $builder ) {
+			$found[] = $builder;
 		}
 
 		// Slideshow / carousel plugins (shortcode/block signatures;

@@ -46,8 +46,13 @@ final class Logger {
 				mkdir( $directory, 0775, true );
 			}
 
-			$handle = fopen( $logFile, 'a' );
-			$this->fileHandle = $handle === false ? null : $handle;
+			$handle = @fopen( $logFile, 'a' );
+			if ( $handle === false ) {
+				fwrite( STDERR, sprintf( "Warning: Could not open log file '%s' for writing.\n", $logFile ) );
+				$this->fileHandle = null;
+			} else {
+				$this->fileHandle = $handle;
+			}
 		}
 	}
 

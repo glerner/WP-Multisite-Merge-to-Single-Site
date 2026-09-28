@@ -38,6 +38,10 @@ final class AdminIdRenumberer {
 			throw new \InvalidArgumentException( 'rangeMin must not be greater than rangeMax.' );
 		}
 
+		if ( $min === $max && $min === $oldId ) {
+			throw new \InvalidArgumentException( 'Effective range contains only oldId; cannot pick a different ID.' );
+		}
+
 		do {
 			$candidate = random_int( $min, $max );
 		} while ( $candidate === $oldId );
@@ -46,30 +50,53 @@ final class AdminIdRenumberer {
 	}
 
 	/**
-	 * Builds the ordered list of SQL statements to run, in a single
-	 * transaction, to move a user from $oldId to $newId and keep
-	 * every table that references that user_id/post_author in sync.
+	 * Builds the ordered list of transactional DML statements (UPDATEs)
+	 * to move a user from $oldId to $newId across users, usermeta, posts,
+	 * and comments tables.
+	 *
+	 * @return string[]
+	 *
+	 * @throws \InvalidArgumentException If $oldId equals $newId.
+	 */
+	public function buildDmlStatements( int $oldId, int $newId, string $tablePrefix ): array {
+		if ( $oldId === $newId ) {
+			throw new \InvalidArgumentException( 'oldId and newId must differ.' );
+		}
+
+		return array(
+			sprintf( 'UPDATE %susers SET ID = %d WHERE ID = %d', $tablePrefix, $newId, $oldId ),
+			sprintf( 'UPDATE %susermeta SET user_id = %d WHERE user_id = %d', $tablePrefix, $newId, $oldId ),
+			sprintf( 'UPDATE %sposts SET post_author = %d WHERE post_author = %d', $tablePrefix, $newId, $oldId ),
+			sprintf( 'UPDATE %scomments SET user_id = %d WHERE user_id = %d', $tablePrefix, $newId, $oldId ),
+		);
+	}
+
+	/**
+	 * Builds non-transactional DDL statements (ALTER TABLE) to update
+	 * AUTO_INCREMENT so new auto-registered users cannot collide with
+	 * old IDs. Must run outside transactions because MySQL DDL commits
+	 * implicitly.
+	 *
+	 * @return string[]
+	 */
+	public function buildDdlStatements( int $newId, string $tablePrefix ): array {
+		return array(
+			sprintf( 'ALTER TABLE %susers AUTO_INCREMENT = %d', $tablePrefix, $newId + 1 ),
+		);
+	}
+
+	/**
+	 * Builds the complete ordered list of SQL statements (DML updates
+	 * followed by DDL auto-increment update).
 	 *
 	 * @return string[]
 	 *
 	 * @throws \InvalidArgumentException If $oldId equals $newId.
 	 */
 	public function buildStatements( int $oldId, int $newId, string $tablePrefix ): array {
-		if ( $oldId === $newId ) {
-			throw new \InvalidArgumentException( 'oldId and newId must differ.' );
-		}
-
 		return array(
-			// Must be first: usermeta/posts/comments below have no FK
-			// enforcing referential integrity in WordPress's schema, so
-			// order only matters for readability here, not correctness.
-			sprintf( 'UPDATE %susers SET ID = %d WHERE ID = %d', $tablePrefix, $newId, $oldId ),
-			sprintf( 'UPDATE %susermeta SET user_id = %d WHERE user_id = %d', $tablePrefix, $newId, $oldId ),
-			sprintf( 'UPDATE %sposts SET post_author = %d WHERE post_author = %d', $tablePrefix, $newId, $oldId ),
-			sprintf( 'UPDATE %scomments SET user_id = %d WHERE user_id = %d', $tablePrefix, $newId, $oldId ),
-			// Keeps future auto-registered users from being assigned a
-			// low ID that collides with old bookmarks/assumptions.
-			sprintf( 'ALTER TABLE %susers AUTO_INCREMENT = %d', $tablePrefix, $newId + 1 ),
+			...$this->buildDmlStatements( $oldId, $newId, $tablePrefix ),
+			...$this->buildDdlStatements( $newId, $tablePrefix ),
 		);
 	}
 }

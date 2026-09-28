@@ -43,6 +43,15 @@ final class AdminIdRenumbererTest extends TestCase {
 		$renumberer->pickRandomId( rangeMin: 100, rangeMax: 1 );
 	}
 
+	public function testPickRandomIdRejectsRangeContainingOnlyOldId(): void {
+		$renumberer = new AdminIdRenumberer();
+
+		$this->expectException( InvalidArgumentException::class );
+		$this->expectExceptionMessage( 'Effective range contains only oldId' );
+
+		$renumberer->pickRandomId( oldId: 6, rangeMin: 1, rangeMax: 1, offset: 5 );
+	}
+
 	public function testBuildStatementsProducesExpectedUpdatesInOrder(): void {
 		$renumberer = new AdminIdRenumberer();
 
@@ -58,6 +67,21 @@ final class AdminIdRenumbererTest extends TestCase {
 			),
 			$statements
 		);
+	}
+
+	public function testBuildDmlStatementsSeparatesUpdatesFromAlter(): void {
+		$renumberer = new AdminIdRenumberer();
+
+		$dml = $renumberer->buildDmlStatements( 1, 42, 'wp_' );
+		$ddl = $renumberer->buildDdlStatements( 42, 'wp_' );
+
+		self::assertCount( 4, $dml );
+		foreach ( $dml as $statement ) {
+			self::assertStringStartsWith( 'UPDATE wp_', $statement );
+		}
+
+		self::assertCount( 1, $ddl );
+		self::assertSame( array( 'ALTER TABLE wp_users AUTO_INCREMENT = 43' ), $ddl );
 	}
 
 	public function testBuildStatementsUsesConfiguredTablePrefix(): void {

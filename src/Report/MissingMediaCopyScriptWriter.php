@@ -74,8 +74,9 @@ final class MissingMediaCopyScriptWriter {
 
 		ksort( $missing );
 		foreach ( $missing as $entry ) {
-			$target = $resolver->candidatePaths( $entry['blog_id'], $entry['relative'] )[0];
-			$found = $this->locate( $index, $entry['relative'] );
+			$target  = $resolver->candidatePaths( $entry['blog_id'], $entry['relative'] )[0];
+			$located = $this->locate( $index, $entry['relative'] );
+			$found   = $located['path'];
 
 			if ( $found === null ) {
 				$lines[] = sprintf(
@@ -85,6 +86,16 @@ final class MissingMediaCopyScriptWriter {
 					$entry['relative']
 				);
 				continue;
+			}
+
+			if ( $located['ambiguous'] ) {
+				$lines[] = sprintf(
+					'# AMBIGUOUS: site %d, attachment %d: %s (multiple candidates, none matched relative path: %s)',
+					$entry['blog_id'],
+					$entry['post_id'],
+					$entry['relative'],
+					implode( ', ', $located['candidates'] )
+				);
 			}
 
 			$lines[] = sprintf(
@@ -136,8 +147,10 @@ final class MissingMediaCopyScriptWriter {
 
 	/**
 	 * @param array<string, string[]> $index
+	 *
+	 * @return array{path: string|null, ambiguous: bool, candidates: string[]}
 	 */
-	private function locate( array $index, string $relative ): ?string {
+	private function locate( array $index, string $relative ): array {
 		$candidates = $index[ basename( $relative ) ] ?? array();
 
 		// Prefer a candidate whose path ends with the full relative path
@@ -145,11 +158,19 @@ final class MissingMediaCopyScriptWriter {
 		// disambiguates same-named files living in different folders.
 		foreach ( $candidates as $candidate ) {
 			if ( str_ends_with( str_replace( '\\', '/', $candidate ), $relative ) ) {
-				return $candidate;
+				return array(
+					'path'       => $candidate,
+					'ambiguous'  => false,
+					'candidates' => $candidates,
+				);
 			}
 		}
 
-		return $candidates[0] ?? null;
+		return array(
+			'path'       => $candidates[0] ?? null,
+			'ambiguous'  => count( $candidates ) > 1,
+			'candidates' => $candidates,
+		);
 	}
 
 	private static function shellQuote( string $arg ): string {

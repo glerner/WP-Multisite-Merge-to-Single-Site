@@ -58,7 +58,12 @@ final class DatabaseConfig {
 	 * @throws ConfigException If a required key is missing.
 	 */
 	public static function fromArray( array $data, string $label ): self {
-		foreach ( array( 'host', 'database', 'username', 'table_prefix', 'uploads_path' ) as $required ) {
+		$hasSocket    = isset( $data['unix_socket'] ) && $data['unix_socket'] !== '';
+		$requiredKeys = $hasSocket
+			? array( 'database', 'username', 'table_prefix', 'uploads_path' )
+			: array( 'host', 'database', 'username', 'table_prefix', 'uploads_path' );
+
+		foreach ( $requiredKeys as $required ) {
 			if ( ! array_key_exists( $required, $data ) || $data[ $required ] === '' ) {
 				throw new ConfigException(
 					sprintf( 'Missing required "%s" config key for "%s" database.', $required, $label )

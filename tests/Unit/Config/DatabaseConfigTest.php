@@ -50,6 +50,22 @@ final class DatabaseConfigTest extends TestCase {
 		self::assertSame( self::ALTERNATE_TABLE_PREFIX . '5_options', $config->siteTable( 'options', 5 ) );
 	}
 
+	public function testAllowsSocketOnlyConfigWithoutHost(): void {
+		$config = DatabaseConfig::fromArray(
+			array(
+				'unix_socket'  => '/tmp/mysql.sock',
+				'database'     => 'db',
+				'username'     => 'root',
+				'table_prefix' => 'wp_',
+				'uploads_path' => '/tmp/uploads',
+			),
+			'test'
+		);
+
+		self::assertSame( '/tmp/mysql.sock', $config->socket );
+		self::assertSame( 'localhost', $config->host );
+	}
+
 	private function makeConfig( string $prefix ): DatabaseConfig {
 		return DatabaseConfig::fromArray(
 			array(

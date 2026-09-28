@@ -117,7 +117,7 @@ final class DivergentSiteOptionCheck implements AuditCheckInterface {
 	}
 
 	public function description(): string {
-		return 'Site-wide options whose value differs across subsites; the merged site keeps ONE value per option -- pick the canonical one. Expected per-site values (siteurl, blogname, ...) are already filtered out.';
+		return 'Autoloaded site-wide options (autoload = \'yes\') whose value differs across subsites; the merged site keeps ONE value per option -- pick the canonical one. Expected per-site values (siteurl, blogname, ...) are already filtered out.';
 	}
 
 	public function run( Connection $source, MergeConfig $config, array $sites ): array {
@@ -212,9 +212,17 @@ final class DivergentSiteOptionCheck implements AuditCheckInterface {
 
 		$remaining = count( $divergent ) - self::MAX_FINDINGS;
 		if ( $remaining > 0 ) {
-			$findings[] = AuditFinding::info(
+			$remainingKeys = array_slice( array_keys( $divergent ), self::MAX_FINDINGS );
+			$sample        = array_slice( $remainingKeys, 0, 20 );
+			$extra         = count( $remainingKeys ) - count( $sample );
+			$findings[]    = AuditFinding::info(
 				$this->name() . '.truncated',
-				sprintf( '%d more divergent option name(s) not shown: %s', $remaining, implode( ', ', array_slice( array_keys( $divergent ), self::MAX_FINDINGS ) ) )
+				sprintf(
+					'%d more divergent option name(s) not shown: %s%s',
+					$remaining,
+					implode( ', ', $sample ),
+					$extra > 0 ? sprintf( ' (and %d more)', $extra ) : ''
+				)
 			);
 		}
 

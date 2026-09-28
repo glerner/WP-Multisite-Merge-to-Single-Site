@@ -70,10 +70,10 @@ final class PluginDataCheck implements AuditCheckInterface {
 		// via ?? array() for plugins that are installed but never active.
 		/** @var array<string, array{installed_sites: int[], active_sites?: int[]}> $pluginSites */
 		$pluginSites = array();
+		$installed   = array_unique( array( ...$inventory->installedSlugs(), ...$mustUse ) );
 
 		foreach ( $sites as $site ) {
-			$installed = array_unique( array( ...$inventory->installedSlugs(), ...$mustUse ) );
-			$active    = array_unique( array( ...$networkActive, ...$inventory->activeSlugsForSite( $source, $site->blogId ), ...$mustUse ) );
+			$active = array_unique( array( ...$networkActive, ...$inventory->activeSlugsForSite( $source, $site->blogId ), ...$mustUse ) );
 
 			foreach ( $installed as $slug ) {
 				$pluginSites[ $slug ]['installed_sites'][] = $site->blogId;
@@ -293,7 +293,6 @@ final class PluginDataCheck implements AuditCheckInterface {
 						'rows'         => (int) $counts['rows_total'],
 						'unique_names' => (int) $counts['unique_names'],
 					);
-					break;
 				}
 			}
 		}

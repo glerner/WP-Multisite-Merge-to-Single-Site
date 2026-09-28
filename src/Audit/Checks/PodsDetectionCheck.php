@@ -41,8 +41,20 @@ final class PodsDetectionCheck implements AuditCheckInterface {
 		);
 
 		if ( $customTables !== array() ) {
-			$tableNames = array_column( $customTables, 'TABLE_NAME' );
+			$rawTableNames = array_column( $customTables, 'TABLE_NAME' );
+			// Filter out false positives like "wp_podcasts" -- real Pods
+			// tables are {prefix}podsrel, {prefix}podsmeta, or {prefix}pods_{name}.
+			$tableNames = array_values(
+				array_filter(
+					$rawTableNames,
+					static fn ( string $t ): bool => (bool) preg_match( '/(?:^|_)pods(?:rel|meta|_|$)/i', $t )
+				)
+			);
+		} else {
+			$tableNames = array();
+		}
 
+		if ( $tableNames !== array() ) {
 			// The full table list stays in the JSON report's context;
 			// the terminal-facing message shows only a sample so a long
 			// list (e.g. dozens of tables) doesn't push the real

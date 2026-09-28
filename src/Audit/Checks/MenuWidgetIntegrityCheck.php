@@ -124,12 +124,14 @@ final class MenuWidgetIntegrityCheck implements AuditCheckInterface {
 			return array();
 		}
 
-		$sidebars = @unserialize( $sidebarsValue );
+		// Security: 'allowed_classes' => false prevents PHP Object Injection.
+		$sidebars = @unserialize( $sidebarsValue, array( 'allowed_classes' => false ) );
 		if ( ! is_array( $sidebars ) ) {
 			return array();
 		}
 
-		$findings = array();
+		$widgetOptionsCache = array();
+		$findings           = array();
 		foreach ( $sidebars as $sidebarId => $widgetIds ) {
 			if ( ! is_array( $widgetIds ) || $sidebarId === 'wp_inactive_widgets' || $sidebarId === 'array_version' ) {
 				continue;
@@ -141,10 +143,13 @@ final class MenuWidgetIntegrityCheck implements AuditCheckInterface {
 				}
 
 				$widgetOptionName = 'widget_' . $m['type'];
-				$widgetOptionValue = $source->fetchScalar(
-					"SELECT option_value FROM {$optionsTable} WHERE option_name = :name LIMIT 1",
-					array( 'name' => $widgetOptionName )
-				);
+				if ( ! array_key_exists( $widgetOptionName, $widgetOptionsCache ) ) {
+					$widgetOptionsCache[ $widgetOptionName ] = $source->fetchScalar(
+						"SELECT option_value FROM {$optionsTable} WHERE option_name = :name LIMIT 1",
+						array( 'name' => $widgetOptionName )
+					);
+				}
+				$widgetOptionValue = $widgetOptionsCache[ $widgetOptionName ];
 
 				if ( ! is_string( $widgetOptionValue ) ) {
 					$findings[] = AuditFinding::warning(
@@ -165,7 +170,8 @@ final class MenuWidgetIntegrityCheck implements AuditCheckInterface {
 					continue;
 				}
 
-				$instances = @unserialize( $widgetOptionValue );
+				// Security: 'allowed_classes' => false prevents PHP Object Injection.
+				$instances = @unserialize( $widgetOptionValue, array( 'allowed_classes' => false ) );
 				if ( is_array( $instances ) && ! array_key_exists( (int) $m['index'], $instances ) ) {
 					$findings[] = AuditFinding::warning(
 						$this->name(),
