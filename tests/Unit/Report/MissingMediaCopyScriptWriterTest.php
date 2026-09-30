@@ -107,7 +107,10 @@ final class MissingMediaCopyScriptWriterTest extends TestCase {
 
 		self::assertNotNull( $script );
 		self::assertStringContainsString( '# AMBIGUOUS:', $script );
-		self::assertStringContainsString( 'multiple candidates', $script );
+		self::assertStringContainsString( 'Multiple candidate files', $script );
+		self::assertStringContainsString( 'MANUAL INTERVENTION REQUIRED', $script );
+		self::assertStringContainsString( '# install -D -m 0644', $script );
+		self::assertStringNotContainsString( "\ninstall -D", $script );
 	}
 
 	/**

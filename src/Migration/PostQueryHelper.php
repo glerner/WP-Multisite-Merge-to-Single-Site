@@ -58,7 +58,7 @@ final class PostQueryHelper {
 				$placeholders[] = ':' . $key;
 				$params[ $key ] = $type;
 			}
-			return sprintf( ' AND post_type IN (%s)', implode( ', ', $placeholders ) );
+			return sprintf( 'post_type IN (%s)', implode( ', ', $placeholders ) );
 		}
 
 		if ( $excludedPostTypes === array() ) {
@@ -72,7 +72,26 @@ final class PostQueryHelper {
 			$params[ $key ] = $type;
 		}
 
-		return sprintf( ' AND post_type NOT IN (%s)', implode( ', ', $placeholders ) );
+		return sprintf( 'post_type NOT IN (%s)', implode( ', ', $placeholders ) );
+	}
+
+	/**
+	 * Combines post_status and post_type WHERE clauses into a single valid WHERE fragment.
+	 *
+	 * @param string[]              $excludedPostStatuses
+	 * @param string[]              $postTypes
+	 * @param string[]              $excludedPostTypes
+	 * @param array<string, string> $params Bound parameters, appended.
+	 */
+	public static function postsWhereClause( array $excludedPostStatuses, array $postTypes, array $excludedPostTypes, array &$params ): string {
+		$clauses = array_filter(
+			array(
+				self::postStatusClause( $excludedPostStatuses, $params ),
+				self::postTypeClause( $postTypes, $excludedPostTypes, $params ),
+			)
+		);
+
+		return implode( ' AND ', $clauses );
 	}
 
 	/**

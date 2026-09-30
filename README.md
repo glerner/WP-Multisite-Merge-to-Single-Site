@@ -4,6 +4,11 @@ Standalone PHP CLI tools to audit, inventory, and merge a WordPress
 multisite network into a single WordPress site. See [`PLAN.md`](PLAN.md)
 for the full design and rationale.
 
+The destination must be a standard single-site WordPress installation;
+multisite-to-multisite merging is not supported. All destination schema
+operations and content migrations target single-site tables (`wp_users`,
+`wp_posts`, `wp_comments`, `wp_options`).
+
 This is **not** a WordPress plugin. It has no admin UI and does not run
 inside WordPress at all -- it's a set of Composer/PSR-4 autoloaded PHP
 CLI scripts that connect directly (via PDO) to your source multisite's

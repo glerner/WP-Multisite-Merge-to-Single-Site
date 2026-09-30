@@ -127,7 +127,13 @@ final class MenuWidgetIntegrityCheck implements AuditCheckInterface {
 		// Security: 'allowed_classes' => false prevents PHP Object Injection.
 		$sidebars = @unserialize( $sidebarsValue, array( 'allowed_classes' => false ) );
 		if ( ! is_array( $sidebars ) ) {
-			return array();
+			return array(
+				AuditFinding::warning(
+					$this->name(),
+					sprintf( 'Site %d has corrupt or malformed "sidebars_widgets" option data -- widget areas cannot be read.', $blogId ),
+					array( 'blog_id' => $blogId )
+				),
+			);
 		}
 
 		$widgetOptionsCache = array();
@@ -172,7 +178,26 @@ final class MenuWidgetIntegrityCheck implements AuditCheckInterface {
 
 				// Security: 'allowed_classes' => false prevents PHP Object Injection.
 				$instances = @unserialize( $widgetOptionValue, array( 'allowed_classes' => false ) );
-				if ( is_array( $instances ) && ! array_key_exists( (int) $m['index'], $instances ) ) {
+				if ( ! is_array( $instances ) ) {
+					$findings[] = AuditFinding::warning(
+						$this->name(),
+						sprintf(
+							'Site %d, sidebar "%s" references widget "%s", but option "%s" contains corrupt or malformed serialized data -- rebuild the widget.',
+							$blogId,
+							(string) $sidebarId,
+							$widgetId,
+							$widgetOptionName
+						),
+						array(
+							'blog_id'   => $blogId,
+							'sidebar'   => $sidebarId,
+							'widget_id' => $widgetId,
+						)
+					);
+					continue;
+				}
+
+				if ( ! array_key_exists( (int) $m['index'], $instances ) ) {
 					$findings[] = AuditFinding::warning(
 						$this->name(),
 						sprintf(
@@ -184,9 +209,9 @@ final class MenuWidgetIntegrityCheck implements AuditCheckInterface {
 							$widgetOptionName
 						),
 						array(
-						'blog_id' => $blogId,
-						'sidebar' => $sidebarId,
-						'widget_id' => $widgetId,
+							'blog_id'   => $blogId,
+							'sidebar'   => $sidebarId,
+							'widget_id' => $widgetId,
 						)
 					);
 				}

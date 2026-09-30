@@ -6,7 +6,7 @@
 
 - Scope: Entire codebase (src/, bin/, config/, tests/), auditing security, code clarity, naming, and PLAN.md database migration reuse
 - Date: 2026-09-15 (updated 2026-09-26)
-- Status counts: 30 Done, 5 Pending, 8 N/A (Positive)
+- Status counts: 32 Done, 3 Pending, 8 N/A (Positive)
 
 ## Decisions / Constraints
 
@@ -157,10 +157,10 @@
   - Source: `src/Audit/Checks/PodsDetectionCheck.php:39`.
   - Fix: Regex-filters table names using `/(?:^|_)pods(?:rel|meta|_|$)/i` to match only true Pods tables.
 
-- CR-125 — Status: Pending · LOW
-  - Finding: `CliArguments` `--key value` form swallows the next non-flag arg; positional arguments cannot be cleanly distinguished without a schema of known flags.
+- CR-125 — Status: Done · Priority: LOW
+  - Finding: `CliArguments` `--key value` form swallowed the next non-flag arg; positional arguments could not be distinguished from option values.
   - Source: `src/Support/CliArguments.php:40-44`.
-  - What remains: Prefer `--key=value` format; document CLI argument syntax conventions.
+  - Fix: Added optional `$booleanFlags` parameter so boolean flags never consume following arguments, and exposed all non-option positional arguments via `positional()`. Added unit test suite `tests/Unit/Support/CliArgumentsTest.php`.
 
 - CR-126 — Status: Done · Priority: LOW
   - Finding: `AdminIdRenumberer::pickRandomId` looped infinitely if `$min === $max && $min === $oldId`.
@@ -196,11 +196,11 @@
   - Source refs: `PLAN.md` §5 (lines 252-257).
   - What remains: Implement `src/Migration/SerializedDataRewriter.php` with recursion guards, integer/string remapping callbacks, and unit tests against real WP serialized fixtures.
 
-- CR-205 — Status: Pending · Priority: LOW
-  - Finding: `SitesPhpExporter.php` outputs short array syntax `[` and `]` instead of WordPress array syntax `array(...)` specified in `AGENTS.md`.
+- CR-205 — Status: Done · Priority: LOW
+  - Finding: `SitesPhpExporter.php` output short array syntax `[` and `]` instead of WordPress array syntax `array(...)` specified in `AGENTS.md`.
   - Impact: Formatting inconsistency with `config/sites.sample.php`.
   - Source refs: `src/Migration/SitesPhpExporter.php:45, 56, 79`.
-  - What remains: Update `SitesPhpExporter` and `SitesPhpExporterTest` to output `array(...)`.
+  - Fix: Updated `SitesPhpExporter` and `SitesPhpExporterTest` to output WordPress array syntax `array(...)`.
 
 - CR-206 — Status: Done · Priority: LOW (from "Do After")
   - Finding: XLSX reports used default 11pt font size. Important spreadsheet data needed at least 12pt font for readability.
@@ -219,6 +219,8 @@
 - `UserMigrator` is cleanly written with clear transactions, role hierarchy resolution (`RoleResolver`), duplicate prevention, and `IdMap`/`MigrationTable` recording.
 
 ## Plan for Larger Future Extractions (PLAN.md Migration Reuse)
+
+Note: CR-* numbers refer to sections above; these are the plan for implementing them:
 
 1. **`MediaInventory` & `MediaCollisionPlan` (CR-203)**:
    - Extract attachment post querying, disk path resolution, fingerprinting, and collision planning from `MediaFileCheck` into `src/Migration/MediaInventory.php`.

@@ -42,7 +42,7 @@ final class SitesPhpExporter {
 			' * @package MergeMultisite',
 			' */',
 			'',
-			'return [',
+			'return array(',
 		);
 
 		foreach ( $sites as $site ) {
@@ -53,7 +53,7 @@ final class SitesPhpExporter {
 			$lines[] = '    ' . $this->exportEntry( $site ) . ',';
 		}
 
-		$lines[] = '];';
+		$lines[] = ');';
 		$lines[] = '';
 
 		return implode( "\n", $lines );
@@ -76,6 +76,6 @@ final class SitesPhpExporter {
 			$parts[] = sprintf( '%s => %s', var_export( $key, true ), var_export( $value, true ) );
 		}
 
-		return '[' . implode( ', ', $parts ) . ']';
+		return 'array( ' . implode( ', ', $parts ) . ' )';
 	}
 }

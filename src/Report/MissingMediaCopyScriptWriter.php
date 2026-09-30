@@ -89,13 +89,25 @@ final class MissingMediaCopyScriptWriter {
 			}
 
 			if ( $located['ambiguous'] ) {
+				$lines[] = '###############################################################################';
 				$lines[] = sprintf(
-					'# AMBIGUOUS: site %d, attachment %d: %s (multiple candidates, none matched relative path: %s)',
+					'# AMBIGUOUS: site %d, attachment %d: %s',
 					$entry['blog_id'],
 					$entry['post_id'],
-					$entry['relative'],
-					implode( ', ', $located['candidates'] )
+					$entry['relative']
 				);
+				$lines[] = '# Multiple candidate files share this filename but none matched the relative path.';
+				$lines[] = '# MANUAL INTERVENTION REQUIRED: Uncomment exactly one candidate below to install,';
+				$lines[] = '# or rename your source files so they are no longer ambiguous.';
+				$lines[] = '###############################################################################';
+				foreach ( $located['candidates'] as $candidate ) {
+					$lines[] = sprintf(
+						'# install -D -m 0644 %s %s',
+						self::shellQuote( $candidate ),
+						self::shellQuote( $target )
+					);
+				}
+				continue;
 			}
 
 			$lines[] = sprintf(

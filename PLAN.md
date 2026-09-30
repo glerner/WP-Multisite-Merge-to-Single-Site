@@ -66,6 +66,10 @@ Location: `~/sites/merge-multisite` (standalone project).
   are preserved individually (see §7.3).
 - `molten-salt-reactor.glerner.com` (and any other site you flag) is
   excluded via config, not hardcoded.
+- Destination is strictly a single-site WordPress install — merging
+  multisite-to-multisite is an explicit non-goal. All destination schema
+  operations, user renumbering, and content migration target standard
+  single-site tables (`wp_users`, `wp_posts`, `wp_comments`, `wp_options`).
 - Won't touch anything outside `~/sites/merge-multisite`.
 
 ## 3. High-level architecture
@@ -869,6 +873,24 @@ these are scheduled work:
   a future enhancement is a per-page review checklist (original site +
   page, destination page, plugins most likely needing checking on that
   page, and the raw data we have about each).
+- **Configurable suppressions / whitelists for divergent options.** Move
+  or augment `DivergentSiteOptionCheck::EXCLUDED_OPTION_NAMES` via a
+  configuration file (like `config/option-keys.php` or `config/divergent-options.php`),
+  enabling user suppression of known-benign plugin option differences without
+  altering core PHP source code.
+- **Selective scanning of non-autoloaded options in audit.** `DivergentSiteOptionCheck`
+  scans only `autoload = 'yes'` rows to prevent loading megabytes of transient
+  cache blobs and session logs into memory. An enhancement would allow users to
+  specify explicit non-autoloaded option keys or plugin patterns to inspect for
+  differences without opening the door to memory exhaustion. (Note: this is an
+  audit-only enhancement; `OptionsMigrator` in §7.5 already migrates configured
+  plugin options regardless of their autoload flag).
+- **Domain URL normalization in serialized option comparisons.** Many serialized
+  options diverge across subsites solely because an embedded subsite URL
+  (`http://siteA.example.com` vs `http://siteB.example.com`) differs, even though
+  all plugin settings and toggles are identical. Once `SerializedDataRewriter`
+  is implemented, normalizing subsite URLs to a common token before string
+  comparison will eliminate false-positive divergence warnings.
 
 ## 13. Remaining open items
 

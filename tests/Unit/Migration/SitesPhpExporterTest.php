@@ -23,11 +23,11 @@ final class SitesPhpExporterTest extends TestCase {
 		);
 
 		self::assertStringContainsString(
-			"['blog_id' => 1, 'domain' => 'lc.lndo.site', 'include' => true, 'category_name' => 'WP Website Mastery'],",
+			"array( 'blog_id' => 1, 'domain' => 'lc.lndo.site', 'include' => true, 'category_name' => 'WP Website Mastery' ),",
 			$php
 		);
 		self::assertStringContainsString(
-			"['blog_id' => 35, 'domain' => 'molten-salt-reactor.lc.lndo.site', 'include' => false, 'category_name' => 'Molten Salt Reactors'],",
+			"array( 'blog_id' => 35, 'domain' => 'molten-salt-reactor.lc.lndo.site', 'include' => false, 'category_name' => 'Molten Salt Reactors' ),",
 			$php
 		);
 	}

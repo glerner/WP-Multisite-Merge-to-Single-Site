@@ -119,7 +119,7 @@ final class PostScanner {
 		$postsTable = $connection->siteTable( 'posts', $site->blogId );
 
 		$params = array();
-		$where  = PostQueryHelper::postStatusClause( $excludedPostStatuses, $params ) . PostQueryHelper::postTypeClause( $postTypes, $excludedPostTypes, $params );
+		$where  = PostQueryHelper::postsWhereClause( $excludedPostStatuses, $postTypes, $excludedPostTypes, $params );
 
 		$posts = $connection->fetchAll(
 			"SELECT ID, post_type, post_status, post_title, post_name, post_content FROM {$postsTable} WHERE {$where}",
@@ -189,7 +189,7 @@ final class PostScanner {
 		$postMetaTable = $connection->siteTable( 'postmeta', $site->blogId );
 
 		$params = array();
-		$where  = PostQueryHelper::postStatusClause( $excludedPostStatuses, $params ) . PostQueryHelper::postTypeClause( $postTypes, $excludedPostTypes, $params );
+		$where  = PostQueryHelper::postsWhereClause( $excludedPostStatuses, $postTypes, $excludedPostTypes, $params );
 
 		$posts = $connection->fetchAll(
 			"SELECT ID, post_type, post_status, post_name, post_title, post_content FROM {$postsTable} WHERE {$where}",

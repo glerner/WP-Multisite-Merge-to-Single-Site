@@ -36,7 +36,8 @@ final class PostQueryHelperTest extends TestCase {
 		$params = array();
 		$clause = PostQueryHelper::postTypeClause( array( 'post', 'page' ), array( 'revision' ), $params );
 
-		self::assertStringContainsString( 'post_type IN (', $clause );
+		self::assertStringStartsWith( 'post_type IN (', $clause );
+		self::assertStringStartsNotWith( ' AND', $clause );
 		self::assertContains( 'post', $params );
 		self::assertContains( 'page', $params );
 		self::assertNotContains( 'revision', $params );
@@ -46,7 +47,8 @@ final class PostQueryHelperTest extends TestCase {
 		$params = array();
 		$clause = PostQueryHelper::postTypeClause( array(), array( 'revision', 'nav_menu_item' ), $params );
 
-		self::assertStringContainsString( 'post_type NOT IN (', $clause );
+		self::assertStringStartsWith( 'post_type NOT IN (', $clause );
+		self::assertStringStartsNotWith( ' AND', $clause );
 		self::assertContains( 'revision', $params );
 		self::assertContains( 'nav_menu_item', $params );
 	}
@@ -57,5 +59,25 @@ final class PostQueryHelperTest extends TestCase {
 
 		self::assertSame( '', $clause );
 		self::assertSame( array(), $params );
+	}
+
+	public function testPostsWhereClauseCombinesStatusAndType(): void {
+		$params = array();
+		$where  = PostQueryHelper::postsWhereClause( array(), array( 'post', 'page' ), array(), $params );
+
+		self::assertStringStartsWith( 'post_status NOT IN (', $where );
+		self::assertStringContainsString( ' AND post_type IN (', $where );
+		self::assertContains( 'trash', $params );
+		self::assertContains( 'post', $params );
+		self::assertContains( 'page', $params );
+	}
+
+	public function testPostsWhereClauseOmitsTypeWhenNoPostTypesOrExclusions(): void {
+		$params = array();
+		$where  = PostQueryHelper::postsWhereClause( array(), array(), array(), $params );
+
+		self::assertStringStartsWith( 'post_status NOT IN (', $where );
+		self::assertStringNotContainsString( 'post_type', $where );
+		self::assertStringNotContainsString( ' AND', $where );
 	}
 }
