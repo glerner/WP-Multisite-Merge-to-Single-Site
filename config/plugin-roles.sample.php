@@ -6,101 +6,106 @@
  *
  * Copy to config/plugin-roles.php (gitignored).
  *
- * Everything here AUGMENTS the built-in lists in
- * PluginUsageRollup: add a new family, append slugs to an existing
- * family, or teach the audit a new content signal -- nothing needs
- * to be copied here just to keep working; prefix a family slug
- * with '-' to remove a built-in.
+ * Everything here AUGMENTS the built-in lists in PluginUsageRollup:
+ * add a new family, append slugs to an existing family, or teach the audit
+ * a new content signal -- nothing needs to be copied here just to keep
+ * working; prefix a family slug with '-' to remove a built-in.
  *
- * Three optional keys:
+ * Four optional sections:
  *
- * 'conflict_families'
- *   family-label => installed-plugin directory slugs. A family is
- *   reported when 2+ of its members are installed and active; sites
- *   where they are co-active are flagged as real conflicts. Use the
- *   exact same label to add slugs to a built-in family ('SEO',
- *   'Contact forms', 'Comment spam', 'Mail delivery', 'Analytics',
- *   'Page builders', ...) or a new label to create a category.
- *   Prefix a slug with '-' to remove it from a built-in family.
+ * 1. 'conflict_families'
+ *   family-label => list of installed-plugin directory slugs. A family is
+ *   reported when 2+ of its members are installed and active; sites where
+ *   they are co-active are flagged as real conflicts.
  *
- * 'signal_map'
- *   detector-token => array( 'name' => display-name,
- *   'slugs' => candidate plugin directory names ). The token is
- *   matched as a case-insensitive prefix/substring against detector
- *   labels (meta prefixes, block names, post types, shortcodes); the
- *   candidates are checked against installed plugins so the signal
- *   resolves to the right plugin name.
+ *   The 10 built-in conflict families in the main program are:
+ *     - 'Mail delivery / SMTP'
+ *     - 'Contact forms'
+ *     - 'SEO'
+ *     - 'Comment spam'
+ *     - 'Caching/performance'
+ *     - 'Image optimization'
+ *     - 'CDN/edge'
+ *     - 'Security'
+ *     - 'Backups'
+ *     - 'Page builders'
  *
- * 'not_a_plugin'
- *   tokens that look like signals but are platform output, not a
- *   plugin (e.g. core editor blocks) -- they are never reported as
- *   "signal has no matching plugin".
+ *   Use the exact label to add a plugin slug to a built-in family, or
+ *   prefix a slug with '-' to remove it:
+ *     'Contact forms' => array( 'my-custom-forms' ),
+ *     'Page builders' => array( '-themify-builder' ),
  *
- * 'detector_extras'
- *   detector-category => signature-table additions for the
- *   table-driven detectors, so a newly-seen plugin signature is a
- *   config edit rather than a source edit. The key is the detector's
- *   category() string; only 'seo_plugin', 'form_plugin', 'gallery',
- *   and 'shortcodes' take extras (the other detectors are hardcoded
- *   logic, not tables). Extras augment the built-ins; they never
- *   remove one.
+ * 2. 'signal_map'
+ *   detector-token => array( 'name' => display-name, 'slugs' => array( candidate directory slugs ) ).
+ *   Maps block prefixes, shortcodes, and postmeta tokens to known plugins.
  *
- *   'seo_plugin' => array(
- *       // meta-key prefix => plugin label; a known prefix's label
- *       // is replaced, a new prefix is added.
- *       'meta_prefixes' => array( '_myseo_' => 'My SEO Plugin' ),
- *   ),
+ * 3. 'not_a_plugin'
+ *   tokens that look like signals but are platform/core output, not a plugin.
  *
- *   'form_plugin' => array(
- *       // label => regex patterns matched against post_content;
- *       // patterns APPEND to a known label, a new label is added.
- *       'content_signatures' => array( 'My Form' => array( '\[myform\b', 'wp:myform\/' ) ),
- *       // label => array( meta_key, needle searched inside its value );
- *       // a known label's tuple is REPLACED.
- *       'meta_signatures'    => array( 'My Form' => array( '_myform_data', '"type":"form"' ) ),
- *       // label => patterns matched against a raw <form> action URL.
- *       'action_signatures'  => array( 'My Processor' => array( 'myprocessor' ) ),
- *   ),
+ * 4. 'detector_extras'
+ *   Augments signature tables for table-driven detectors ('form_plugin',
+ *   'seo_plugin', 'gallery', 'shortcodes').
  *
- *   'gallery' => array(
- *       'content_signatures'         => array( 'My Gallery' => array( '\[mygallery\b' ) ),
- *       'meta_signatures'            => array( 'My Gallery' => array( '_my_gallery', 'needle' ) ),
- *       // For PHP-serialized builder layouts: meta_key + module type.
- *       'serialized_meta_signatures' => array( 'My Builder' => array( '_my_builder_data', 'gallery' ) ),
- *   ),
+ *   HOW TO CONVERT SPREADSHEET BLOCKS TO CONTENT SIGNATURES:
+ *     In the site-audit spreadsheet, the "blocks" column displays block identifiers
+ *     such as "wsf-block/form-add" or "uagb/forms".
  *
- *   'shortcodes' => array(
- *       // Extra never-real shortcode tags, on top of IGNORED_TAGS and
- *       // shortcode-ignore.php.
- *       'ignored_tags' => array( 'mytag' ),
- *   ),
+ *     In raw WordPress database content (wp_posts.post_content), Gutenberg blocks
+ *     are stored as HTML comments prefixed by "wp:":
+ *       <!-- wp:wsf-block/form-add {"id": 1} -->
+ *       <!-- wp:uagb/forms {"id": 2} -->
+ *
+ *     To match these in 'content_signatures':
+ *       - Always prefix with 'wp:'.
+ *       - What appears before the '/' is the Block Namespace (e.g. 'wsf-block', 'uagb').
+ *       - Matching just the namespace prefix (e.g. 'wp:wsf-block' or 'wp:uagb\/forms\b')
+ *         will match any block in that namespace or specific form block.
+ *
+ *   HOW TO CHECK YOUR CONFIGURATION & CATCH SYNTAX ERRORS:
+ *     - Check PHP syntax: run `php -l config/plugin-roles.php` in terminal.
+ *     - Check detection: run `php bin/site-audit.php --site=<blog_id>` on a site
+ *       with the block; confirm the Form Plugin column now shows your label.
  *
  * @package MergeMultisite
  */
 
 return array(
 	'conflict_families' => array(
-		// Append a member to a built-in family:
-		// 'Contact forms' => array( 'my-form-plugin' ),
+		// Example: Add a new form plugin to the built-in 'Contact forms' family:
+		// 'Contact forms' => array( 'ws-form' ),
 
-		// Or create a whole new family:
+		// Example: Create a new custom conflict family:
 		// 'Membership' => array( 'memberpress', 'paid-member-subscriptions', 'restrict-content' ),
 
-		// Or remove a slug from a built-in family:
+		// Example: Remove a plugin slug from a built-in family:
 		// 'Page builders' => array( '-themify-builder' ),
 	),
+
 	'signal_map'        => array(
-		// 'myform' => array( 'name' => 'My Form Plugin', 'slugs' => array( 'my-form-plugin' ) ),
+		// Maps block prefixes to plugin display names and directory slugs:
+		'wsf'  => array(
+			'name'  => 'WS Form',
+			'slugs' => array( 'ws-form' ),
+		),
+		'uagb' => array(
+			'name'  => 'Spectra (Ultimate Addons for Gutenberg)',
+			'slugs' => array( 'ultimate-addons-for-gutenberg' ),
+		),
 	),
+
 	'not_a_plugin'      => array(
+		// Tokens that represent core editor output rather than plugins:
 		// 'core-image-block',
 	),
+
 	'detector_extras'   => array(
-		// 'seo_plugin' => array(
-		// 'meta_prefixes' => array( '_myseo_' => 'My SEO Plugin' ),
-		// ),
-		// 'form_plugin' => array(
-		// 'content_signatures' => array( 'My Form' => array( '\[myform\b' ) ),
-		// ),
+		'form_plugin' => array(
+			'content_signatures' => array(
+				// Matches <!-- wp:wsf-block/form-add --> and all WS Form blocks:
+				'WS Form'      => array( 'wp:wsf-block' ),
+				// Matches <!-- wp:uagb/forms --> Spectra Form blocks:
+				'Spectra Form' => array( 'wp:uagb\/forms\b', 'uagb/forms' ),
+			),
+		),
 	),
 );

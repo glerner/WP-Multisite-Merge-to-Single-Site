@@ -6,6 +6,7 @@ namespace MergeMultisite\Migration;
 
 use MergeMultisite\Config\MergeConfig;
 use MergeMultisite\Db\Connection;
+use MergeMultisite\Db\ConnectionException;
 
 /**
  * Reads the source network's site registry (`wp_blogs`) and resolves
@@ -23,10 +24,25 @@ final class SiteSelector {
 	 * ones -- useful for reporting ("--list-sites").
 	 *
 	 * @return Site[]
+	 *
+	 * @throws ConnectionException If the network blogs table does not exist.
 	 */
 	public function listAllSites( MergeConfig $config ): array {
+		$blogsTable = $this->source->networkTable( 'blogs' );
+		if ( ! $this->source->tableExists( $blogsTable ) ) {
+			throw new ConnectionException(
+				sprintf(
+					'WordPress database is missing, please install database with prefix "%s". (Table "%s" does not exist in schema "%s" on "%s".)',
+					$this->source->config->tablePrefix,
+					$blogsTable,
+					$this->source->config->database,
+					$this->source->config->label
+				)
+			);
+		}
+
 		$rows = $this->source->fetchAll(
-			sprintf( 'SELECT blog_id, domain, path, deleted FROM %s ORDER BY blog_id', $this->source->networkTable( 'blogs' ) )
+			sprintf( 'SELECT blog_id, domain, path, deleted FROM %s ORDER BY blog_id', $blogsTable )
 		);
 
 		$sites = array();

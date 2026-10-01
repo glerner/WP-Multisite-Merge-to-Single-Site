@@ -76,44 +76,43 @@ $source = new Connection( $config->source );
 
 try {
 	$source->pdo();
+	$siteSelector = new SiteSelector( $source );
+
+	if ( $args->has( 'list-sites-php' ) ) {
+		// Deliberately prints ONLY the generated PHP (no log lines mixed
+		// in), so `... > config/sites.php` produces a valid file.
+		echo ( new SitesPhpExporter() )->export( $siteSelector->listAllSites( $config ) );
+		exit( 0 );
+	}
+
+	if ( $args->has( 'list-sites' ) ) {
+		foreach ( $siteSelector->listAllSites( $config ) as $site ) {
+			printf(
+				'%-6d %-40s included=%s deleted=%s%s' . PHP_EOL,
+				$site->blogId,
+				$site->domain,
+				$site->included ? 'yes' : 'no',
+				$site->deleted ? 'yes' : 'no',
+				$site->deleted ? '' : ' title="' . $site->title . '"'
+			);
+		}
+		exit( 0 );
+	}
+
+	if ( $args->has( 'include-deleted' ) ) {
+		// All sites, deleted ones included. They remain marked
+		// deleted/included=false (so e.g. SitesPhpExporter would still
+		// omit them); this only affects what the AUDIT looks at, never
+		// what the migrator would write.
+		$sites = $siteSelector->listAllSites( $config );
+		$logger->info( sprintf( 'Running integrity checks against %d site(s), INCLUDING deleted ones.', count( $sites ) ) );
+	} else {
+		$sites = $siteSelector->listIncludedSites( $config );
+		$logger->info( sprintf( 'Running integrity checks against %d included site(s).', count( $sites ) ) );
+	}
 } catch ( ConnectionException $exception ) {
 	$logger->error( $exception->getMessage() );
 	exit( 1 );
-}
-
-$siteSelector = new SiteSelector( $source );
-
-if ( $args->has( 'list-sites-php' ) ) {
-	// Deliberately prints ONLY the generated PHP (no log lines mixed
-	// in), so `... > config/sites.php` produces a valid file.
-	echo ( new SitesPhpExporter() )->export( $siteSelector->listAllSites( $config ) );
-	exit( 0 );
-}
-
-if ( $args->has( 'list-sites' ) ) {
-	foreach ( $siteSelector->listAllSites( $config ) as $site ) {
-		printf(
-			'%-6d %-40s included=%s deleted=%s%s' . PHP_EOL,
-			$site->blogId,
-			$site->domain,
-			$site->included ? 'yes' : 'no',
-			$site->deleted ? 'yes' : 'no',
-			$site->deleted ? '' : ' title="' . $site->title . '"'
-		);
-	}
-	exit( 0 );
-}
-
-if ( $args->has( 'include-deleted' ) ) {
-	// All sites, deleted ones included. They remain marked
-	// deleted/included=false (so e.g. SitesPhpExporter would still
-	// omit them); this only affects what the AUDIT looks at, never
-	// what the migrator would write.
-	$sites = $siteSelector->listAllSites( $config );
-	$logger->info( sprintf( 'Running integrity checks against %d site(s), INCLUDING deleted ones.', count( $sites ) ) );
-} else {
-	$sites = $siteSelector->listIncludedSites( $config );
-	$logger->info( sprintf( 'Running integrity checks against %d included site(s).', count( $sites ) ) );
 }
 
 $checks = array(

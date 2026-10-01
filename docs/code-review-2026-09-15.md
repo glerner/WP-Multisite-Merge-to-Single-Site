@@ -5,8 +5,9 @@
 ## Summary
 
 - Scope: Entire codebase (src/, bin/, config/, tests/), auditing security, code clarity, naming, and PLAN.md database migration reuse
-- Date: 2026-09-15 (updated 2026-09-26)
-- Status counts: 32 Done, 3 Pending, 8 N/A (Positive)
+- Date: 2026-09-15 (closed 2026-09-29)
+- Status counts: 32 Done, 3 Carried Forward, 8 N/A (Positive)
+- **Status: CLOSED**. All actionable items are resolved (32 Done). The 3 remaining items (CR-121, CR-203, CR-204) have been carried forward and expanded in `docs/code-review-2026-09-28.md` as CR-310, CR-306, and CR-307. This document is kept for historical record.
 
 ## Decisions / Constraints
 
@@ -137,10 +138,10 @@
   - Source: `src/Config/ConfigLoader.php:45-48`.
   - Fix: Applied `expandHome()` to source and destination `uploads_path`.
 
-- CR-121 — Status: Pending · LOW
+- CR-121 — Status: Carried Forward · LOW
   - Finding: `ContentAuditRow::$original_url` is approximate: built from `post_name` alone, so hierarchical child pages (e.g. `/parent/child/`) lose parent path.
   - Source: `src/ContentAudit/ContentAuditRow.php:55`.
-  - What remains: Build parent-child slug tree in `PostScanner` when full hierarchical URL is required for reports.
+  - Resolution: Carried forward and expanded as CR-310 in `docs/code-review-2026-09-28.md`.
 
 - CR-122 — Status: Done · Priority: LOW
   - Finding: `Logger` silently dropped file logging if `fopen` failed without warning.
@@ -184,17 +185,17 @@
   - Source refs: `src/ContentAudit/PostScanner.php:273-352`.
   - Fix: Extracted `src/Migration/PostQueryHelper.php` (`postStatusClause()`, `postTypeClause()`, `fetchMetaForPosts()`); `PostScanner` now calls `PostQueryHelper`. Added unit test suite `tests/Unit/Migration/PostQueryHelperTest.php`.
 
-- CR-203 — Status: Pending · Priority: MEDIUM (Plan presented)
+- CR-203 — Status: Carried Forward · Priority: MEDIUM
   - Finding: `MediaFileCheck` gathers attachment posts, relative paths (`_wp_attached_file`), resolves disk paths via `UploadsPathResolver`, hashes files, groups by basename, and detects collisions. `MediaMigrator.php` (PLAN.md §7.2) requires this exact discovery and collision renaming logic (`{basename}_site{old_blog_id}.{ext}`).
   - Impact: Code duplication between audit and migration tools.
   - Source refs: `src/Audit/Checks/MediaFileCheck.php:60-91, 176-232`.
-  - What remains: Extract `MediaInventory` / `MediaCollisionPlan` in `src/Migration/` to be shared between `MediaFileCheck` and `MediaMigrator`.
+  - Resolution: Carried forward and expanded as CR-306 in `docs/code-review-2026-09-28.md`.
 
-- CR-204 — Status: Pending · Priority: MEDIUM (Plan presented)
+- CR-204 — Status: Carried Forward · Priority: MEDIUM
   - Finding: PLAN.md §5 specifies `SerializedDataRewriter` to safely unserialize, walk, remap IDs/URLs, and re-serialize with updated byte-length prefixes for postmeta, options, and block attributes. Not yet written.
   - Impact: Required before `PostMigrator`, `CommentMigrator`, and `OptionsMigrator` can safely remap IDs in serialized data without corrupting PHP serialized strings.
   - Source refs: `PLAN.md` §5 (lines 252-257).
-  - What remains: Implement `src/Migration/SerializedDataRewriter.php` with recursion guards, integer/string remapping callbacks, and unit tests against real WP serialized fixtures.
+  - Resolution: Carried forward and expanded as CR-307 in `docs/code-review-2026-09-28.md`.
 
 - CR-205 — Status: Done · Priority: LOW
   - Finding: `SitesPhpExporter.php` output short array syntax `[` and `]` instead of WordPress array syntax `array(...)` specified in `AGENTS.md`.

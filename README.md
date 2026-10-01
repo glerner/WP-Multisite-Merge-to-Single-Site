@@ -44,6 +44,47 @@ assumed to be `wp_` -- it's always read from config). Edit
 are gitignored since they contain real credentials/site data; only the
 `*.sample.php` versions are committed.
 
+### Creating the Destination WordPress Site (WP-CLI)
+
+The destination must be a clean, standard single-site WordPress installation. The simplest, most reliable way to create it is with WP-CLI:
+
+```bash
+# 1. Download WordPress core into your destination directory
+# If you have all your sites in ~/sites/, you might have WordPress source in ~/sites/wp-multisite/ and the destination in ~/sites/wp-destination/
+wp core download --path=/path/to/destination
+
+# 2. Create wp-config.php
+# Substitute your values for dbname, dbuser, dbpass.
+# Use the value your local development expects for dbhost
+# Use the same path for the destination as the previous step
+wp config create \
+  --dbname=destination_db \
+  --dbuser=db_user \
+  --dbpass=db_password \
+  --dbhost=localhost \
+  --path=/path/to/destination
+
+# 3. Create the database (if not already created)
+wp db create --path=/path/to/destination
+
+# 4. Install WordPress as a single site with an initial admin user
+# Substitute the value you will use for the URL of your production site
+# Alternate procedure: enter the URL For your local development, test everything works, and rerun this migration with a new database with the URL of the production site
+# Use your choice of other values, except the same destination path
+wp core install \
+  --url="https://destination.example.com" \
+  --title="Merged Site" \
+  --admin_user="initial_admin" \
+  --admin_password="choose-a-strong-password" \
+  --admin_email="admin@example.com" \
+  --path=/path/to/destination
+
+# 5. Renumber the initial admin user ID (prevents ID 1 collision)
+php bin/harden-admin-id.php
+```
+
+After running `harden-admin-id.php`, set `'admin_user_id'` in `config/config.php` to the assigned ID.
+
 ## Tools
 
 ### `bin/multisite-integrity-checker.php`

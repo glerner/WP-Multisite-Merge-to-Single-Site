@@ -821,7 +821,7 @@ blocking issues are found; `--strict` flag to also fail on warnings.
    pipeline; also safe to run immediately, and useful on its own for
    your plugin-consolidation decisions). Built; hardening/report polish
    is the natural next candidate before Phase 3+.
-4. **Phase 3** — Users + Terms migrators (+ term-merge report).
+4. **Phase 3** — Users + Terms migrators (+ term-merge report). ✅ Built (UserMigrator and TermMigrator implemented with IdMap/MigrationTable integration and unit tests).
 5. **Phase 4** — Media migrator (filesystem copy/dedup/rename,
    `--move-media-only`).
 6. **Phase 5** — Posts/pages/CPTs + postmeta + parent-fixups + contact
@@ -891,6 +891,14 @@ these are scheduled work:
   all plugin settings and toggles are identical. Once `SerializedDataRewriter`
   is implemented, normalizing subsite URLs to a common token before string
   comparison will eliminate false-positive divergence warnings.
+- **Dedicated "Block Inventory" tab in `site-audit.xlsx`.** In the main post-by-post
+  audit sheet, a post's `blocks` column contains all blocks found as a semicolon-separated
+  string, making Calc/Excel AutoFilter show every multi-block permutation instead of
+  individual unique blocks. Adding a second worksheet tab (`blocks`) with columns for
+  `Block Namespace/Name`, `Owning Plugin`, `Plugin Slug`, `Total Occurrences`, and
+  `Sample Pages Found On` lets users filter and review individual block types cleanly
+  without combinatorial noise. Plug-in mappings are driven by `config/plugin-roles.php`
+  `signal_map`.
 
 ## 13. Remaining open items
 

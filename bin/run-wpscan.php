@@ -40,7 +40,11 @@ $logger = new Logger( 'info' );
 
 $url = $args->get( 'url' );
 if ( $url === null ) {
-	$logger->error( 'Usage: php bin/run-wpscan.php --url=https://example.com [--api-token=...]' );
+	echo "Scans a live WordPress site for known vulnerable core, plugin, and theme versions using WPScan.\n";
+	echo "Install WPScan with: gem install wpscan\n\n";
+	echo "Get tokens to run scans, from https://wpscan.com/register (Researcher level 25 scans a day for free)\n\n";
+	echo "Usage:\n";
+	echo "  php bin/run-wpscan.php --url=https://example.com [--api-token=...] [--config=/path/to/config/dir]\n";
 	exit( 1 );
 }
 

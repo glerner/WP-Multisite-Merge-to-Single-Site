@@ -122,15 +122,21 @@ EOT;
 	 * @param array<string, mixed> $params
 	 *
 	 * @return array<int, array<string, mixed>>
+	 *
+	 * @throws ConnectionException If the query fails due to a missing table.
 	 */
 	public function fetchAll( string $sql, array $params = array() ): array {
-		$statement = $this->pdo()->prepare( $sql );
-		$statement->execute( $params );
+		try {
+			$statement = $this->pdo()->prepare( $sql );
+			$statement->execute( $params );
 
-		/** @var array<int, array<string, mixed>> $rows */
-		$rows = $statement->fetchAll();
+			/** @var array<int, array<string, mixed>> $rows */
+			$rows = $statement->fetchAll();
 
-		return $rows;
+			return $rows;
+		} catch ( PDOException $exception ) {
+			throw $this->wrapQueryException( $exception );
+		}
 	}
 
 	/**
@@ -139,28 +145,40 @@ EOT;
 	 * @param array<string, mixed> $params
 	 *
 	 * @return array<string, mixed>|null
+	 *
+	 * @throws ConnectionException If the query fails due to a missing table.
 	 */
 	public function fetchOne( string $sql, array $params = array() ): ?array {
-		$statement = $this->pdo()->prepare( $sql );
-		$statement->execute( $params );
+		try {
+			$statement = $this->pdo()->prepare( $sql );
+			$statement->execute( $params );
 
-		$row = $statement->fetch();
+			$row = $statement->fetch();
 
-		return $row === false ? null : $row;
+			return $row === false ? null : $row;
+		} catch ( PDOException $exception ) {
+			throw $this->wrapQueryException( $exception );
+		}
 	}
 
 	/**
 	 * Run a SELECT COUNT(*)-style query and return a single scalar value.
 	 *
 	 * @param array<string, mixed> $params
+	 *
+	 * @throws ConnectionException If the query fails due to a missing table.
 	 */
 	public function fetchScalar( string $sql, array $params = array() ): mixed {
-		$statement = $this->pdo()->prepare( $sql );
-		$statement->execute( $params );
+		try {
+			$statement = $this->pdo()->prepare( $sql );
+			$statement->execute( $params );
 
-		$value = $statement->fetchColumn();
+			$value = $statement->fetchColumn();
 
-		return $value === false ? null : $value;
+			return $value === false ? null : $value;
+		} catch ( PDOException $exception ) {
+			throw $this->wrapQueryException( $exception );
+		}
 	}
 
 	/**
@@ -168,12 +186,37 @@ EOT;
 	 * of affected rows.
 	 *
 	 * @param array<string, mixed> $params
+	 *
+	 * @throws ConnectionException If the query fails due to a missing table.
 	 */
 	public function execute( string $sql, array $params = array() ): int {
-		$statement = $this->pdo()->prepare( $sql );
-		$statement->execute( $params );
+		try {
+			$statement = $this->pdo()->prepare( $sql );
+			$statement->execute( $params );
 
-		return $statement->rowCount();
+			return $statement->rowCount();
+		} catch ( PDOException $exception ) {
+			throw $this->wrapQueryException( $exception );
+		}
+	}
+
+	/**
+	 * Translates missing-table PDO exceptions into a clean ConnectionException.
+	 */
+	private function wrapQueryException( PDOException $exception ): \Throwable {
+		if ( $exception->getCode() === '42S02' || ( isset( $exception->errorInfo[1] ) && (int) $exception->errorInfo[1] === 1146 ) ) {
+			return new ConnectionException(
+				sprintf(
+					'WordPress database is missing, please install database with prefix "%s". (Table not found: %s)',
+					$this->config->tablePrefix,
+					$exception->getMessage()
+				),
+				(int) $exception->getCode(),
+				$exception
+			);
+		}
+
+		return $exception;
 	}
 
 	/**

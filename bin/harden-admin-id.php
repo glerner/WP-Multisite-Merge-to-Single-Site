@@ -49,17 +49,17 @@ $destination = new Connection( $config->destination );
 
 try {
 	$destination->pdo();
+
+	$existing = $destination->fetchOne(
+		sprintf( 'SELECT ID, user_login FROM %susers WHERE ID = :id', $config->destination->tablePrefix ),
+		array( 'id' => $oldId )
+	);
 } catch ( ConnectionException $exception ) {
 	$logger->error( $exception->getMessage() );
 	exit( 1 );
 }
 
 $renumberer = new AdminIdRenumberer();
-
-$existing = $destination->fetchOne(
-	sprintf( 'SELECT ID, user_login FROM %susers WHERE ID = :id', $config->destination->tablePrefix ),
-	array( 'id' => $oldId )
-);
 
 if ( $existing === null ) {
 	$logger->error( sprintf( 'No user with ID %d found on the destination site.', $oldId ) );

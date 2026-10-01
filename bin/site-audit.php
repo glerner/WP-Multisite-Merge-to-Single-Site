@@ -81,30 +81,29 @@ $source = new Connection( $config->source );
 
 try {
 	$source->pdo();
-} catch ( ConnectionException $exception ) {
-	$logger->error( $exception->getMessage() );
-	exit( 1 );
-}
+	$siteSelector = new SiteSelector( $source );
 
-$siteSelector = new SiteSelector( $source );
+	if ( $args->has( 'all-sites' ) ) {
+		$sites = $siteSelector->listIncludedSites( $config );
+	} elseif ( $args->has( 'site' ) ) {
+		$blogId = (int) $args->get( 'site' );
+		$sites  = array_values(
+			array_filter(
+				$siteSelector->listAllSites( $config ),
+				static fn ( $site ): bool => $site->blogId === $blogId
+			)
+		);
 
-if ( $args->has( 'all-sites' ) ) {
-	$sites = $siteSelector->listIncludedSites( $config );
-} elseif ( $args->has( 'site' ) ) {
-	$blogId = (int) $args->get( 'site' );
-	$sites = array_values(
-		array_filter(
-			$siteSelector->listAllSites( $config ),
-			static fn ( $site ): bool => $site->blogId === $blogId
-		)
-	);
-
-	if ( $sites === array() ) {
-		$logger->error( sprintf( 'No site found with blog_id=%d.', $blogId ) );
+		if ( $sites === array() ) {
+			$logger->error( sprintf( 'No site found with blog_id=%d.', $blogId ) );
+			exit( 1 );
+		}
+	} else {
+		$logger->error( 'Specify either --site=<blog_id> or --all-sites.' );
 		exit( 1 );
 	}
-} else {
-	$logger->error( 'Specify either --site=<blog_id> or --all-sites.' );
+} catch ( ConnectionException $exception ) {
+	$logger->error( $exception->getMessage() );
 	exit( 1 );
 }
 

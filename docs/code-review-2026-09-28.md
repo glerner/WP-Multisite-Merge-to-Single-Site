@@ -4,7 +4,7 @@
 
 - Scope: Diff review post-commit plus complete architectural review of PLAN.md (Phases 3–10) to identify reusable migration extractions, deduplicate queries, and prepare well-tested components.
 - Date: 2026-09-28
-- Status counts: 3 Done, 10 Pending (Migration Extractions), 2 Future Enhancements, 4 Positive (N/A)
+- Status counts: 4 Done, 9 Pending (Migration Extractions), 3 Future Enhancements, 4 Positive (N/A)
 
 ## Decisions / Constraints
 
@@ -43,11 +43,11 @@
   - Source refs: `src/Audit/Checks/MediaFileCheck.php:60-91, 176-232`.
   - Fix: Extract `src/Migration/MediaInventory.php` (collecting attachment rows and disk paths) and `src/Migration/MediaCollisionPlan.php` (grouping by hash/basename, resolving `{basename}_site{blog_id}.{ext}` rename targets). Share both between `MediaFileCheck` and `MediaMigrator`.
 
-- CR-307 — Status: Pending · Priority: HIGH (PLAN.md §5 — Global Remapping)
-  - Finding: PLAN.md §5 mandates a central `SerializedDataRewriter` to safely unserialize (`allowed_classes => false`), recursively walk data structures, remap IDs via `IdMap` and URLs via domain mappings, and recalculate byte-length prefixes (`s:length:"value"`).
+- CR-307 — Status: Done · Priority: HIGH (PLAN.md §5 — Global Remapping)
+  - Finding: PLAN.md §5 mandates a central `SerializedDataRewriter` to safely unserialize (`allowed_classes => ['stdClass']`), recursively walk data structures, remap IDs via `IdMap` and URLs via domain mappings, and recalculate byte-length prefixes (`s:length:"value"`).
   - Impact: Hand-rolled string search-and-replace corrupts PHP serialized strings. Required by `PostMigrator` (postmeta like `_thumbnail_id`, ACF arrays, block attributes), `CommentMigrator` (commentmeta), `MenuMigrator` (widget instance options), and `OptionsMigrator` (plugin settings).
   - Source refs: `PLAN.md` §5 (lines 256-261).
-  - Fix: Implement `src/Migration/SerializedDataRewriter.php` with recursion guards, integer/string remapping callbacks, and unit tests against real WP serialized fixtures.
+  - Fix: Implemented `src/Migration/SerializedDataRewriter.php` (`rewrite()`, `rewriteStrings()`, `rewriteIntegers()`, `rewriteJson()`, `rewriteAny()`) with recursion guards and unit test suite `tests/Unit/Migration/SerializedDataRewriterTest.php`.
 
 - CR-308 — Status: Pending · Priority: MEDIUM (PLAN.md §7.5 — Phase 7/8)
   - Finding: `MenuWidgetIntegrityCheck` and `NavMenuItemDetector` both query `nav_menu_item` posts and `wp_postmeta` (`_menu_item_type`, `_menu_item_object_id`, `_menu_item_menu_item_parent`, `_menu_item_url`) to resolve item titles, taxonomy terms, and link validity. `MenuMigrator` (PLAN.md §7.5) needs the identical queries to migrate `nav_menu` terms, migrate `nav_menu_item` posts, rewrite `_menu_item_object_id` / `_menu_item_menu_item_parent` via `IdMap`, and generate `menus-overview.md`/`.json` tree views.
@@ -110,6 +110,12 @@
   - Impact: Generates false divergence warnings for plugins whose configuration is otherwise uniform across subsites.
   - What remains: Normalize subsite domain URLs before comparing serialized option strings once `SerializedDataRewriter` (CR-307 / CR-204) is implemented. Added to `PLAN.md` §12.5.
   - Source refs: `src/Audit/Checks/DivergentSiteOptionCheck.php:174-189`, `PLAN.md` §12.5.
+
+- CR-316 — Status: Pending · Priority: LOW (Future Enhancement)
+  - Finding: In `site-audit.xlsx`, multiple blocks on a post appear semicolon-separated in a single `blocks` cell. In spreadsheet tools (LibreOffice Calc, Excel), filtering on that column shows all combinatorial permutations rather than individual unique blocks.
+  - Impact: Hard to see the full list of distinct blocks used across the network or identify which posts contain a specific block without complex substring filtering.
+  - What remains: Add a second worksheet tab (`block-inventory`) to `ContentAuditReportWriter::toXlsx()` with columns for `Block (Namespace/Name)`, `Owning Plugin`, `Plugin Slug`, `Occurrences`, and `Sample URLs`. Plug-in resolution driven by `signal_map` in `config/plugin-roles.php`. Added to `PLAN.md` §12.5.
+  - Source refs: `src/Report/ContentAuditReportWriter.php:450-480`, `PLAN.md` §12.5.
 
 ## Design Limitations
 
