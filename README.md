@@ -46,7 +46,9 @@ are gitignored since they contain real credentials/site data; only the
 
 ### Creating the Destination WordPress Site (WP-CLI)
 
-The destination must be a clean, standard single-site WordPress installation. The simplest, most reliable way to create it is with WP-CLI:
+The destination must be a clean, standard single-site WordPress installation. For detailed environment guides covering **Lando**, **Local by Flywheel**, and **WordPress Studio**, see [`docs/local-environments.md`](docs/local-environments.md).
+
+The standard way to create it via WP-CLI:
 
 ```bash
 # 1. Download WordPress core into your destination directory
@@ -197,6 +199,14 @@ or running `migrate.php` against that destination.
 php bin/harden-admin-id.php --dry-run
 php bin/harden-admin-id.php
 php bin/harden-admin-id.php --new-id=42
+```
+
+### `bin/test-connections.php`
+
+Pre-flight connection verification: connects to both the source multisite and destination single-site databases simultaneously within a single PHP process, verifies that table prefixes match real tables, checks user and site counts, validates that `admin_user_id` in `config.php` matches a real destination user, and tests readability/writeability of the uploads directories.
+
+```bash
+php bin/test-connections.php
 ```
 
 ### `bin/migrate.php` (in progress)

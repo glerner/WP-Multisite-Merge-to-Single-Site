@@ -20,6 +20,7 @@ Verify everything with: `composer test && composer phpcs && composer phpstan`.
 | `bin/site-audit.php` | Content/plugin-usage audit: scans posts across included sites, reports blocks/shortcodes/plugin footprints per page. Options: `--site=<id>`, `--all-sites`, `--post-types=…`, `--search=…`, `--config=<dir>`. Writes CSV + JSON + summary.md + XLSX to `var/reports/`, plus a needs-review CSV. |
 | `bin/multisite-integrity-checker.php` | Read-only pre-flight audit: runs every `AuditCheckInterface` check. `--strict`, `--list-sites`, `--config=`. Writes Markdown + JSON to `var/reports/` and a media-recovery script to `var/`. |
 | `bin/harden-admin-id.php` | Renumbers destination admin user away from ID 1 (run once, before migration; see `AdminIdRenumberer`). |
+| `bin/test-connections.php` | Pre-flight connection test: verifies both source and destination databases and uploads directories simultaneously in one PHP process. |
 | `bin/run-wpscan.php` | Optional wrapper around external `wpscan` CLI (Ruby gem) for vulnerability checks against a live URL. |
 
 ## Configuration (`config/`)

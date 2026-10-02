@@ -77,10 +77,15 @@ final class AdminIdRenumberer {
 	 * old IDs. Must run outside transactions because MySQL DDL commits
 	 * implicitly.
 	 *
+	 * Relaxes NO_ZERO_DATE in session sql_mode so MySQL 8.0 strict mode
+	 * does not reject ALTER TABLE with "1067 Invalid default value for
+	 * 'user_registered'" due to WordPress's legacy 0000-00-00 default.
+	 *
 	 * @return string[]
 	 */
 	public function buildDdlStatements( int $newId, string $tablePrefix ): array {
 		return array(
+			"SET SESSION sql_mode = REPLACE(REPLACE(@@sql_mode, 'NO_ZERO_DATE', ''), 'NO_ZERO_IN_DATE', '')",
 			sprintf( 'ALTER TABLE %susers AUTO_INCREMENT = %d', $tablePrefix, $newId + 1 ),
 		);
 	}

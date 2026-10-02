@@ -63,6 +63,12 @@ final class AdminIdRenumbererTest extends TestCase {
 				'UPDATE wp_usermeta SET user_id = 42 WHERE user_id = 1',
 				'UPDATE wp_posts SET post_author = 42 WHERE post_author = 1',
 				'UPDATE wp_comments SET user_id = 42 WHERE user_id = 1',
+				// MySQL 8.0 strict mode enforces NO_ZERO_DATE and NO_ZERO_IN_DATE.
+				// WordPress core defines `user_registered datetime NOT NULL DEFAULT '0000-00-00 00:00:00'`.
+				// When ALTER TABLE executes, MySQL 8 re-validates all column defaults and rejects
+				// '0000-00-00 00:00:00' with error 1067 ("Invalid default value for 'user_registered'")
+				// unless both NO_ZERO_DATE and NO_ZERO_IN_DATE are relaxed for the session.
+				"SET SESSION sql_mode = REPLACE(REPLACE(@@sql_mode, 'NO_ZERO_DATE', ''), 'NO_ZERO_IN_DATE', '')",
 				'ALTER TABLE wp_users AUTO_INCREMENT = 43',
 			),
 			$statements
@@ -80,8 +86,14 @@ final class AdminIdRenumbererTest extends TestCase {
 			self::assertStringStartsWith( 'UPDATE wp_', $statement );
 		}
 
-		self::assertCount( 1, $ddl );
-		self::assertSame( array( 'ALTER TABLE wp_users AUTO_INCREMENT = 43' ), $ddl );
+		self::assertCount( 2, $ddl );
+		self::assertSame(
+			array(
+				"SET SESSION sql_mode = REPLACE(REPLACE(@@sql_mode, 'NO_ZERO_DATE', ''), 'NO_ZERO_IN_DATE', '')",
+				'ALTER TABLE wp_users AUTO_INCREMENT = 43',
+			),
+			$ddl
+		);
 	}
 
 	public function testBuildStatementsUsesConfiguredTablePrefix(): void {
