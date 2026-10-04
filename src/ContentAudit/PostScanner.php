@@ -7,6 +7,7 @@ namespace MergeMultisite\ContentAudit;
 use MergeMultisite\ContentAudit\Detectors\ContentDetectorInterface;
 use MergeMultisite\Db\Connection;
 use MergeMultisite\Migration\PageTemplateResolver;
+use MergeMultisite\Migration\PostHierarchyResolver;
 use MergeMultisite\Migration\PostQueryHelper;
 use MergeMultisite\Migration\Site;
 
@@ -192,13 +193,17 @@ final class PostScanner {
 		$where  = PostQueryHelper::postsWhereClause( $excludedPostStatuses, $postTypes, $excludedPostTypes, $params );
 
 		$posts = $connection->fetchAll(
-			"SELECT ID, post_type, post_status, post_name, post_title, post_content FROM {$postsTable} WHERE {$where}",
+			"SELECT ID, post_type, post_status, post_name, post_title, post_content, post_parent FROM {$postsTable} WHERE {$where}",
 			$params
 		);
 
 		if ( $posts === array() ) {
 			return array();
 		}
+
+		// Resolves `parent/child` slug paths for pages and hierarchical
+		// CPTs so `original_url` isn't truncated to the bare post_name.
+		$hierarchy = PostHierarchyResolver::fromRows( $posts );
 
 		$metaByPost = PostQueryHelper::fetchMetaForPosts( $connection, $postMetaTable, array_column( $posts, 'ID' ) );
 
@@ -256,6 +261,7 @@ final class PostScanner {
 					slug: $scannedPost->slug,
 					postTitle: $scannedPost->postTitle,
 					categoryFindings: $categoryFindings,
+					path: $hierarchy->slugPath( $postId ),
 					template: $templateInfo['template'],
 					templateStatus: $templateInfo['status'],
 					// custom_css posts hold the Customizer's "Additional

@@ -4,7 +4,7 @@
 
 - Scope: Diff review post-commit plus complete architectural review of PLAN.md (Phases 3–10) to identify reusable migration extractions, deduplicate queries, and prepare well-tested components.
 - Date: 2026-09-28
-- Status counts: 4 Done, 9 Pending (Migration Extractions), 3 Future Enhancements, 4 Positive (N/A)
+- Status counts: 13 Done, 0 Pending, 3 Moved (to `code-review-2026-10-03.md`), 4 Positive (N/A)
 
 ## Decisions / Constraints
 
@@ -37,11 +37,11 @@
 
 ## Unified Action Checklist — Reusable Migration Extractions (PLAN.md)
 
-- CR-306 — Status: Pending · Priority: HIGH (PLAN.md §7.2 — Phase 4/5)
+- CR-306 — Status: Done · Priority: HIGH (PLAN.md §7.2 — Phase 4/5)
   - Finding: `MediaFileCheck` implements attachment post querying, disk path resolution via `UploadsPathResolver`, content fingerprinting via `FileHasher`, basename collision detection, and renaming calculations (`{basename}_site{old_blog_id}.{ext}`). `MediaMigrator.php` (PLAN.md §7.2) requires this exact discovery, dedup, and collision renaming logic for both `--move-media-only` and full migration.
   - Impact: Duplication of critical filesystem and database attachment mapping logic between the audit checker and migration executor.
   - Source refs: `src/Audit/Checks/MediaFileCheck.php:60-91, 176-232`.
-  - Fix: Extract `src/Migration/MediaInventory.php` (collecting attachment rows and disk paths) and `src/Migration/MediaCollisionPlan.php` (grouping by hash/basename, resolving `{basename}_site{blog_id}.{ext}` rename targets). Share both between `MediaFileCheck` and `MediaMigrator`.
+  - Fix: Extracted `src/Migration/MediaInventory.php` (`collect()` returning `{found, missing}` rows with resolved disk paths, plus `fingerprints()` hashing each file once) and `src/Migration/MediaCollisionPlan.php` (`groupsByBasename()`, `groupsByFingerprint()`, `resolve()` per-file destination targets, `renamedRelativePath()`/`renamedVariantFilename()` for `{basename}_site{blog_id}.{ext}` and `-{W}x{H}` variants). `MediaFileCheck` now delegates to both; `MediaCollisionPlan` is covered by `tests/Unit/Migration/MediaCollisionPlanTest.php`.
 
 - CR-307 — Status: Done · Priority: HIGH (PLAN.md §5 — Global Remapping)
   - Finding: PLAN.md §5 mandates a central `SerializedDataRewriter` to safely unserialize (`allowed_classes => ['stdClass']`), recursively walk data structures, remap IDs via `IdMap` and URLs via domain mappings, and recalculate byte-length prefixes (`s:length:"value"`).
@@ -49,73 +49,76 @@
   - Source refs: `PLAN.md` §5 (lines 256-261).
   - Fix: Implemented `src/Migration/SerializedDataRewriter.php` (`rewrite()`, `rewriteStrings()`, `rewriteIntegers()`, `rewriteJson()`, `rewriteAny()`) with recursion guards and unit test suite `tests/Unit/Migration/SerializedDataRewriterTest.php`.
 
-- CR-308 — Status: Pending · Priority: MEDIUM (PLAN.md §7.5 — Phase 7/8)
+- CR-308 — Status: Done · Priority: MEDIUM (PLAN.md §7.5 — Phase 7/8)
   - Finding: `MenuWidgetIntegrityCheck` and `NavMenuItemDetector` both query `nav_menu_item` posts and `wp_postmeta` (`_menu_item_type`, `_menu_item_object_id`, `_menu_item_menu_item_parent`, `_menu_item_url`) to resolve item titles, taxonomy terms, and link validity. `MenuMigrator` (PLAN.md §7.5) needs the identical queries to migrate `nav_menu` terms, migrate `nav_menu_item` posts, rewrite `_menu_item_object_id` / `_menu_item_menu_item_parent` via `IdMap`, and generate `menus-overview.md`/`.json` tree views.
   - Impact: Redundant SQL queries and duplicate relationship mapping for navigation menus.
   - Source refs: `src/Audit/Checks/MenuWidgetIntegrityCheck.php:35-75`, `src/ContentAudit/Detectors/NavMenuItemDetector.php:40-80`.
-  - Fix: Extract `src/Migration/MenuInventory.php` to gather menu terms, menu items, hierarchy, and target relationships in a single reusable model.
+  - Fix: Implemented `src/Migration/MenuInventory.php` — `collect()` returns one site's `nav_menu` terms plus every `nav_menu_item` post with its `_menu_item_*` meta (type, object, object_id, url, parent) and its menu's `term_taxonomy_id` via a correlated subquery. `MenuWidgetIntegrityCheck` now consumes it.
 
-- CR-309 — Status: Pending · Priority: MEDIUM (PLAN.md §7.5 — Phase 7/8)
+- CR-309 — Status: Done · Priority: MEDIUM (PLAN.md §7.5 — Phase 7/8)
   - Finding: `MenuWidgetIntegrityCheck` parses `sidebars_widgets` and multi-widget option instances (`widget_{type}`). `MenuMigrator` must migrate and namespace `sidebars_widgets` and each `widget_{type}` instance into orphaned/inactive widget areas on destination.
   - Impact: Duplicate parsing of WordPress widget sidebar arrays and multi-widget instance storage structures.
   - Source refs: `src/Audit/Checks/MenuWidgetIntegrityCheck.php:118-185`.
-  - Fix: Extract `src/Migration/WidgetInventory.php` to parse and namespace sidebar and widget instance options for both audit and migration.
+  - Fix: Implemented `src/Migration/WidgetInventory.php` — `collect()` loads `sidebars_widgets` plus every `widget_%` option in one query each, unserializing once, returning `{sidebars, sidebars_corrupt, widget_options}` with per-option `ok`/`corrupt` status; `parseWidgetId()` splits `{type}-{index}` IDs. `MenuWidgetIntegrityCheck` now derives its findings from the model.
 
-- CR-310 — Status: Pending · Priority: MEDIUM (PLAN.md §7.1 & §7.6 — Phase 5/9)
+- CR-310 — Status: Done · Priority: MEDIUM (PLAN.md §7.1 & §7.6 — Phase 5/9)
   - Finding: `PostScanner` builds URLs using `post_name` alone, losing hierarchical parent paths (`/parent/child/`) for pages and hierarchical CPTs. `PostMigrator` needs two-pass parent-child resolution (`post_parent` rewritten via `IdMap`), and `RedirectMapBuilder` + `UrlRewriter` require exact hierarchical permalinks for 301 redirects and internal link rewriting.
   - Impact: Truncated URLs in audit reports and incorrect redirect map targets for nested pages.
   - Source refs: `src/ContentAudit/PostScanner.php:194`, `src/ContentAudit/ContentAuditRow.php:55`.
-  - Fix: Extract `src/Migration/PostHierarchyResolver.php` to build parent-child slug paths for hierarchical post types, used by `PostScanner` (accurate `original_url`), `UrlRewriter`, and `RedirectMapBuilder`.
+  - Fix: Implemented `src/Migration/PostHierarchyResolver.php` — `slugPath()` walks same-post-type `post_parent` chains (cross-type parents like attachment→post never nest; missing parents and cycles terminate safely). `PostScanner` selects `post_parent`, builds the resolver via `fromRows()`, and passes `path` to `ContentAuditRow`, which now uses it for `original_url`. Covered by `tests/Unit/Migration/PostHierarchyResolverTest.php`.
 
-- CR-311 — Status: Pending · Priority: LOW (PLAN.md §7.1 & §9)
+- CR-311 — Status: Done · Priority: LOW (PLAN.md §7.1 & §9)
   - Finding: `ContactPageDiscoveryCheck` scans posts for contact page slugs (`contact`, `contact-us`, `contact-me`, `get-in-touch`) and form plugin footprints. `PostMigrator` and `UrlRewriter` must canonicalize contact page slugs to `/contact/` and map all variant URLs into the redirect map.
   - Impact: Risk of divergent contact slug matching rules between audit discovery and migration rewriting.
   - Source refs: `src/Audit/Checks/ContactPageDiscoveryCheck.php:45-75`.
-  - Fix: Extract `src/Migration/ContactPageCanonicalizer.php` to share slug detection patterns and canonicalization mapping.
+  - Fix: Implemented `src/Migration/ContactPageCanonicalizer.php` — `isContactLike()`/`candidateClause()` (shared detection pattern for PHP filtering and SQL pre-filtering), `normalizePath()`, `isVariant()` (configured-list membership), and `canonicalPath()` (`/contact/` mapping). `ContactPageDiscoveryCheck` now uses `candidateClause()` and `isVariant()`. Covered by `tests/Unit/Migration/ContactPageCanonicalizerTest.php`.
 
-- CR-312 — Status: Pending · Priority: LOW (PLAN.md §7.4 — Phase 6)
+- CR-312 — Status: Done · Priority: LOW (PLAN.md §7.4 — Phase 6)
   - Finding: `OrphanedMetaCheck` queries `comments` and `commentmeta`. `CommentMigrator` must chunk comments, remap `comment_post_ID` and `user_id` via `IdMap`, resolve threaded replies (`comment_parent`) in a second pass, and copy `commentmeta` using `SerializedDataRewriter`.
   - Impact: Unchunked comments queries risk MySQL prepared statement limits or memory pressure on sites with high comment volumes.
   - Source refs: `src/Audit/Checks/OrphanedMetaCheck.php:50-80`.
-  - Fix: Extract `src/Migration/CommentQueryHelper.php` (mirroring `PostQueryHelper`) to handle chunked comment and commentmeta fetching.
+  - Fix: Implemented `src/Migration/CommentQueryHelper.php` mirroring `PostQueryHelper` — `commentBatches()` yields keyset-paginated comment batches (`comment_ID > :last_id`), `fetchMetaForComments()` fetches commentmeta in 5000-ID chunks. `OrphanedMetaCheck` keeps its aggregate COUNT queries, which need no chunking.
 
-- CR-313 — Status: Pending · Priority: MEDIUM (PLAN.md §7.6 — Phase 9)
+- CR-313 — Status: Done · Priority: MEDIUM (PLAN.md §7.6 — Phase 9)
   - Finding: PLAN.md §7.6 specifies generating 301 redirect maps across 6 formats: `redirects.json`, `redirects.md`, `redirects.csv` (Redirection plugin format), `redirects-yoast.csv` (Yoast SEO format), `redirects.htaccess` (Apache), and `redirects-nginx.conf` (Nginx).
   - Impact: Writing multi-format generation inline inside `migrate.php` reduces testability and couples output generation with migration execution.
   - Source refs: `PLAN.md` §7.6 (lines 591-608).
-  - Fix: Implement `src/Migration/RedirectMapBuilder.php` as a standalone, pure-logic class with full unit test coverage across all 6 formats.
+  - Fix: Implemented `src/Migration/RedirectMapBuilder.php` — pure-logic `toJson()`, `toMarkdown()`, `toCsv()` (Redirection format), `toYoastCsv()`, `toHtaccess()` (mod_alias, `gone` for 410), `toNginx()` (`rewrite ... permanent` / `location =` returns), and `writeAll()`; output sorted by old_url for stable files. Covered by `tests/Unit/Migration/RedirectMapBuilderTest.php`.
 
-- CR-314 — Status: Pending · Priority: LOW (PLAN.md §7.5 lines 468-471)
+- CR-314 — Status: Done · Priority: LOW (PLAN.md §7.5 lines 468-471)
   - Finding: Block-era menus (`wp_navigation`) and template parts embed menu references as block attributes: `<!-- wp:navigation {"ref":123} -->`. In template parts, `wp_navigation` posts, and pages, these `ref` IDs point to other post IDs that must be rewritten via `IdMap`.
   - Impact: Block navigation menus point to dead post IDs post-migration if block attribute JSON is not parsed and remapped.
   - Source refs: `PLAN.md` §7.5 (lines 468-471), `src/ContentAudit/Detectors/BlockDetector.php`.
-  - Fix: Extract `src/Migration/BlockAttributeRewriter.php` to scan and remap embedded block JSON attribute IDs (`{"ref":123}`) via `IdMap` for both `PostMigrator` and `MenuMigrator`.
+  - Fix: Implemented `src/Migration/BlockAttributeRewriter.php` — `rewrite()` parses `<!-- wp:name {json} /-->` comments, remaps whitelisted integer attributes via `IdMap` (default `ref` => `post`), re-encodes the JSON, and preserves self-closing markers; unmapped refs and non-matching attributes are left untouched. Covered by `tests/Unit/Migration/BlockAttributeRewriterTest.php`.
 
-- CR-315 — Status: Pending · Priority: LOW (PLAN.md §7.1 lines 320-322)
+- CR-315 — Status: Done · Priority: LOW (PLAN.md §7.1 lines 320-322)
   - Finding: In WordPress, post GUIDs must reflect the site and post ID format (`https://destination-url/?p=123`). Both `PostMigrator` and `MediaMigrator` must regenerate GUIDs consistently for all migrated post types.
   - Impact: Inconsistent or non-standard GUID generation across migrated post and attachment rows.
   - Source refs: `PLAN.md` §7.1 (lines 320-322).
-  - Fix: Create `src/Migration/GuidGenerator.php` (`GuidGenerator::forPost(string $destinationUrl, int $newPostId): string`).
+  - Fix: Implemented `src/Migration/GuidGenerator.php` — `forPost()` emits `?p={id}` on the destination URL, `forAttachment()` emits the public uploads URL. Covered by `tests/Unit/Migration/GuidGeneratorTest.php`.
 
-## Future Enhancements (PLAN.md §12.5)
+## Future Enhancements (promoted to `code-review-2026-10-03.md`)
 
-- CR-304 — Status: Pending · Priority: LOW (Future Enhancement)
+- CR-304 — Status: Moved · Priority: LOW (Future Enhancement)
   - Finding: In `DivergentSiteOptionCheck`, `EXCLUDED_OPTION_NAMES` is a hardcoded PHP constant. As more plugins are audited across different multisite networks, users cannot suppress known-benign option differences without modifying core PHP code.
   - Impact: Noise in divergent options reporting for sites running specialized plugins.
   - What remains: Allow user-configured suppressions/whitelists in `config/option-keys.php` or a dedicated `config/divergent-options.php` that augments the built-in exclusions. Added to `PLAN.md` §12.5.
   - Source refs: `src/Audit/Checks/DivergentSiteOptionCheck.php:61-113`, `PLAN.md` §12.5.
+  - Resolution: Promoted to current work as CR-402 in `docs/code-review-2026-10-03.md`.
 
-- CR-305 — Status: Pending · Priority: LOW (Future Enhancement)
+- CR-305 — Status: Moved · Priority: LOW (Future Enhancement)
   - Finding: Serialized options frequently diverge across subsites solely because embedded URLs differ (e.g., `http://site1.example.com` vs `http://site2.example.com`), while all actual plugin configuration toggles are identical.
   - Impact: Generates false divergence warnings for plugins whose configuration is otherwise uniform across subsites.
   - What remains: Normalize subsite domain URLs before comparing serialized option strings once `SerializedDataRewriter` (CR-307 / CR-204) is implemented. Added to `PLAN.md` §12.5.
   - Source refs: `src/Audit/Checks/DivergentSiteOptionCheck.php:174-189`, `PLAN.md` §12.5.
+  - Resolution: Promoted to current work as CR-403 in `docs/code-review-2026-10-03.md` (`SerializedDataRewriter` / CR-307 is now implemented, so this is unblocked).
 
-- CR-316 — Status: Pending · Priority: LOW (Future Enhancement)
+- CR-316 — Status: Moved · Priority: LOW (Future Enhancement)
   - Finding: In `site-audit.xlsx`, multiple blocks on a post appear semicolon-separated in a single `blocks` cell. In spreadsheet tools (LibreOffice Calc, Excel), filtering on that column shows all combinatorial permutations rather than individual unique blocks.
   - Impact: Hard to see the full list of distinct blocks used across the network or identify which posts contain a specific block without complex substring filtering.
   - What remains: Add a second worksheet tab (`block-inventory`) to `ContentAuditReportWriter::toXlsx()` with columns for `Block (Namespace/Name)`, `Owning Plugin`, `Plugin Slug`, `Occurrences`, and `Sample URLs`. Plug-in resolution driven by `signal_map` in `config/plugin-roles.php`. Added to `PLAN.md` §12.5.
   - Source refs: `src/Report/ContentAuditReportWriter.php:450-480`, `PLAN.md` §12.5.
+  - Resolution: Promoted to current work as CR-404 in `docs/code-review-2026-10-03.md`.
 
 ## Design Limitations
 

@@ -8,6 +8,7 @@ use MergeMultisite\Audit\AuditCheckInterface;
 use MergeMultisite\Audit\AuditFinding;
 use MergeMultisite\Config\MergeConfig;
 use MergeMultisite\Db\Connection;
+use MergeMultisite\Migration\ContactPageCanonicalizer;
 
 /**
  * Discovers contact-page slug variants across included sites, both to
@@ -30,7 +31,7 @@ final class ContactPageDiscoveryCheck implements AuditCheckInterface {
 
 	public function run( Connection $source, MergeConfig $config, array $sites ): array {
 		$findings = array();
-		$knownPaths = array_map( static fn ( string $p ): string => trim( $p, '/' ), $config->contactPagePaths );
+		$knownPaths = $config->contactPagePaths;
 
 		foreach ( $sites as $site ) {
 			$postsTable = $source->siteTable( 'posts', $site->blogId );
@@ -38,12 +39,12 @@ final class ContactPageDiscoveryCheck implements AuditCheckInterface {
 			$rows = $source->fetchAll(
 				"SELECT ID, post_name FROM {$postsTable}
                  WHERE post_type IN ('page', 'post') AND post_status NOT IN ('trash', 'auto-draft')
-                 AND post_name LIKE '%contact%'"
+                 AND " . ContactPageCanonicalizer::candidateClause()
 			);
 
 			foreach ( $rows as $row ) {
 				$slug = (string) $row['post_name'];
-				$isKnown = in_array( $slug, $knownPaths, true );
+				$isKnown = ContactPageCanonicalizer::isVariant( $slug, $knownPaths );
 
 				$findings[] = AuditFinding::info(
 					$this->name(),

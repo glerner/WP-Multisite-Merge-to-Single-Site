@@ -8,6 +8,8 @@ use MergeMultisite\Audit\AuditCheckInterface;
 use MergeMultisite\Audit\AuditFinding;
 use MergeMultisite\Config\MergeConfig;
 use MergeMultisite\Db\Connection;
+use MergeMultisite\Migration\MediaCollisionPlan;
+use MergeMultisite\Migration\MediaInventory;
 use MergeMultisite\Migration\UploadsPathResolver;
 use MergeMultisite\Support\FileHasher;
 
@@ -50,56 +52,22 @@ final class MediaFileCheck implements AuditCheckInterface {
 	}
 
 	public function run( Connection $source, MergeConfig $config, array $sites ): array {
-		$resolver = new UploadsPathResolver( $config->source->uploadsPath );
+		$inventory = new MediaInventory(
+			new UploadsPathResolver( $config->source->uploadsPath ),
+			$this->hasher
+		);
+		$plan = new MediaCollisionPlan();
 
-		/** @var array<int, array{blog_id:int, post_id:int, relative:string, path:string}> $found */
-		$found = array();
-		$missing = array();
-		$findings = array();
-
-		foreach ( $sites as $site ) {
-			$postsTable = $source->siteTable( 'posts', $site->blogId );
-			$postMetaTable = $source->siteTable( 'postmeta', $site->blogId );
-
-			$rows = $source->fetchAll(
-				"SELECT p.ID, pm.meta_value AS relative_file
-                 FROM {$postsTable} p
-                 INNER JOIN {$postMetaTable} pm ON pm.post_id = p.ID AND pm.meta_key = '_wp_attached_file'
-                 WHERE p.post_type = 'attachment'"
-			);
-
-			foreach ( $rows as $row ) {
-				$relative = (string) $row['relative_file'];
-				$absolute = $resolver->resolve( $site->blogId, $relative );
-
-				if ( $absolute === null ) {
-					$missing[] = array(
-						'blog_id' => $site->blogId,
-						'post_id' => (int) $row['ID'],
-						'relative' => $relative,
-					);
-					continue;
-				}
-
-				$found[] = array(
-					'blog_id' => $site->blogId,
-					'post_id' => (int) $row['ID'],
-					'relative' => $relative,
-					'path' => $absolute,
-				);
-			}
-		}
+		$collected = $inventory->collect( $source, $sites );
+		$found = $collected['found'];
 
 		// Fingerprint each file exactly once -- hashing is the dominant
 		// cost of this check, and two consumers below need the same map.
-		$fingerprints = array();
-		foreach ( $found as $index => $file ) {
-			$fingerprints[ $index ] = $this->hasher->fingerprint( $file['path'] )->toKey();
-		}
+		$fingerprints = $inventory->fingerprints( $found );
 
-		$findings = array( ...$findings, ...$this->checkMissingFiles( $missing ) );
-		$findings = array( ...$findings, ...$this->checkFilenameCollisions( $found, $fingerprints ) );
-		$findings = array( ...$findings, ...$this->checkDuplicateContentDifferentNames( $found, $fingerprints ) );
+		$findings = $this->checkMissingFiles( $collected['missing'] );
+		$findings = array( ...$findings, ...$this->checkFilenameCollisions( $found, $fingerprints, $plan ) );
+		$findings = array( ...$findings, ...$this->checkDuplicateContentDifferentNames( $found, $fingerprints, $plan ) );
 
 		return $findings;
 	}
@@ -170,19 +138,15 @@ final class MediaFileCheck implements AuditCheckInterface {
 	 *
 	 * @param array<int, array{blog_id:int, post_id:int, relative:string, path:string}> $found
 	 * @param array<int, string>                                                        $fingerprints Index-aligned with $found (computed once in run()).
+	 * @param MediaCollisionPlan                                                        $plan         Shared basename grouping.
 	 *
 	 * @return AuditFinding[]
 	 */
-	private function checkFilenameCollisions( array $found, array $fingerprints ): array {
-		$byBasename = array();
-		foreach ( $found as $index => $file ) {
-			$byBasename[ basename( $file['path'] ) ][ $index ] = $file;
-		}
+	private function checkFilenameCollisions( array $found, array $fingerprints, MediaCollisionPlan $plan ): array {
+		$byBasename = $plan->groupsByBasename( $found );
 
 		$errors = array();
 		$identical = array();
-
-		ksort( $byBasename );
 
 		foreach ( $byBasename as $basename => $group ) {
 			if ( count( $group ) < 2 ) {
@@ -238,14 +202,12 @@ final class MediaFileCheck implements AuditCheckInterface {
 	 *
 	 * @param array<int, array{blog_id:int, post_id:int, relative:string, path:string}> $found
 	 * @param array<int, string>                                                        $fingerprints Index-aligned with $found (computed once in run()).
+	 * @param MediaCollisionPlan                                                        $plan         Shared fingerprint grouping.
 	 *
 	 * @return AuditFinding[]
 	 */
-	private function checkDuplicateContentDifferentNames( array $found, array $fingerprints ): array {
-		$byFingerprint = array();
-		foreach ( $found as $index => $file ) {
-			$byFingerprint[ $fingerprints[ $index ] ][] = $file;
-		}
+	private function checkDuplicateContentDifferentNames( array $found, array $fingerprints, MediaCollisionPlan $plan ): array {
+		$byFingerprint = $plan->groupsByFingerprint( $found, $fingerprints );
 
 		$findings = array();
 		foreach ( $byFingerprint as $group ) {

@@ -138,6 +138,34 @@ security, backups, page builders).
   postmeta, post types, and custom tables; `describe()` renders one line.
 - `UploadsPathResolver` — `_wp_attached_file` → absolute path, both modern
   (`uploads/sites/{id}/`) and legacy `blogs.dir` layouts.
+- `MediaInventory` — per-site attachment collection: `_wp_attached_file`
+  rows → `{found, missing}` with resolved disk paths, plus once-per-file
+  fingerprinting (shared by `MediaFileCheck` and `MediaMigrator`).
+- `MediaCollisionPlan` — pure, DB-free dedup/rename decisions: groups files
+  by basename or fingerprint, resolves destination-relative targets, and
+  applies `{basename}_site{blog_id}.{ext}` renames (including `-{W}x{H}`
+  thumbnail variants).
+- `MenuInventory` — per-site `nav_menu` terms + `nav_menu_item` posts with
+  their `_menu_item_*` meta (type/object/object_id/url/parent) and menu
+  `term_taxonomy_id`; shared by `MenuWidgetIntegrityCheck`/`MenuMigrator`.
+- `WidgetInventory` — parses `sidebars_widgets` + all `widget_%` options
+  (`{sidebars, sidebars_corrupt, widget_options}`); `parseWidgetId()` splits
+  `{type}-{index}` IDs. Shared by `MenuWidgetIntegrityCheck`/`MenuMigrator`.
+- `PostHierarchyResolver` — `slugPath()` walks same-post-type
+  `post_parent` chains into `parent/child` paths; `PostScanner` uses it for
+  `ContentAuditRow.path` → accurate `original_url`.
+- `CommentQueryHelper` — keyset-paginated comment batches +
+  chunked `commentmeta` fetching (mirrors `PostQueryHelper`).
+- `ContactPageCanonicalizer` — shared "contact" slug detection
+  (`isContactLike()`/`candidateClause()`) + variant→`/contact/` mapping
+  (`isVariant()`/`canonicalPath()`); used by `ContactPageDiscoveryCheck`.
+- `RedirectMapBuilder` — pure redirect-map formatters for all 6 exports
+  (JSON, Markdown, Redirection CSV, Yoast CSV, .htaccess, nginx.conf) +
+  `writeAll()`.
+- `BlockAttributeRewriter` — rewrites `<!-- wp:name {json} -->` block
+  attributes (default `ref`) via `IdMap` for PostMigrator/MenuMigrator.
+- `GuidGenerator` — destination post GUIDs: `?p={id}` for posts, uploads
+  URL for attachments.
 - `TermMergeResolver` + `TermMergeGroup` — pure, DB-free case-collision
   merge decisions (shared by the audit check and the future TermMigrator).
 - `SitesPhpExporter` — Site list → paste-ready `sites.php` source.

@@ -8,6 +8,8 @@ use MergeMultisite\Audit\AuditCheckInterface;
 use MergeMultisite\Audit\AuditFinding;
 use MergeMultisite\Config\MergeConfig;
 use MergeMultisite\Db\Connection;
+use MergeMultisite\Migration\MenuInventory;
+use MergeMultisite\Migration\WidgetInventory;
 
 /**
  * Flags nav menu items whose linked object (`_menu_item_object_id`) no
@@ -18,6 +20,14 @@ use MergeMultisite\Db\Connection;
  * @package MergeMultisite
  */
 final class MenuWidgetIntegrityCheck implements AuditCheckInterface {
+
+	private readonly MenuInventory $menuInventory;
+	private readonly WidgetInventory $widgetInventory;
+
+	public function __construct( ?MenuInventory $menuInventory = null, ?WidgetInventory $widgetInventory = null ) {
+		$this->menuInventory = $menuInventory ?? new MenuInventory();
+		$this->widgetInventory = $widgetInventory ?? new WidgetInventory();
+	}
 
 	public function name(): string {
 		return 'menu-widget-integrity';
@@ -43,7 +53,6 @@ final class MenuWidgetIntegrityCheck implements AuditCheckInterface {
 	 */
 	private function checkMenuItems( Connection $source, int $blogId ): array {
 		$postsTable = $source->siteTable( 'posts', $blogId );
-		$postMetaTable = $source->siteTable( 'postmeta', $blogId );
 		$termsTable = $source->siteTable( 'terms', $blogId );
 
 		// _menu_item_object_id points at different tables depending on
@@ -52,22 +61,16 @@ final class MenuWidgetIntegrityCheck implements AuditCheckInterface {
 		// items against wp_posts would flag every category/tag menu
 		// link as broken. 'custom' and 'post_type_archive' items have
 		// no object row to check, so they're skipped.
-		$items = $source->fetchAll(
-			"SELECT item.ID,
-			        typeMeta.meta_value AS item_type,
-			        objectMeta.meta_value AS object_id
-             FROM {$postsTable} item
-             INNER JOIN {$postMetaTable} objectMeta
-                ON objectMeta.post_id = item.ID AND objectMeta.meta_key = '_menu_item_object_id'
-             LEFT JOIN {$postMetaTable} typeMeta
-                ON typeMeta.post_id = item.ID AND typeMeta.meta_key = '_menu_item_type'
-             WHERE item.post_type = 'nav_menu_item' AND objectMeta.meta_value != '0'"
-		);
+		$items = $this->menuInventory->collect( $source, $blogId )['items'];
 
 		$findings = array();
 		foreach ( $items as $row ) {
 			$itemType = (string) ( $row['item_type'] ?? '' );
-			$objectId = (string) $row['object_id'];
+			$objectId = (string) ( $row['object_id'] ?? '' );
+
+			if ( $objectId === '' || $objectId === '0' ) {
+				continue;
+			}
 
 			if ( $itemType === 'post_type' || $itemType === '' ) {
 				// Pre-3.0 menu items and odd rows may lack the type
@@ -94,13 +97,13 @@ final class MenuWidgetIntegrityCheck implements AuditCheckInterface {
 				sprintf(
 					'Site %d, Menu item %d (%s) links to missing object ID %s.',
 					$blogId,
-					(int) $row['ID'],
+					(int) $row['post_id'],
 					$itemType !== '' ? $itemType : 'post_type',
 					$objectId
 				),
 				array(
 				'blog_id' => $blogId,
-				'menu_item_id' => (int) $row['ID'],
+				'menu_item_id' => (int) $row['post_id'],
 				'item_type' => $itemType !== '' ? $itemType : 'post_type',
 				'object_id' => $objectId,
 				)
@@ -114,19 +117,9 @@ final class MenuWidgetIntegrityCheck implements AuditCheckInterface {
 	 * @return AuditFinding[]
 	 */
 	private function checkWidgets( Connection $source, int $blogId ): array {
-		$optionsTable = $source->siteTable( 'options', $blogId );
+		$inventory = $this->widgetInventory->collect( $source, $blogId );
 
-		$sidebarsValue = $source->fetchScalar(
-			"SELECT option_value FROM {$optionsTable} WHERE option_name = 'sidebars_widgets' LIMIT 1"
-		);
-
-		if ( ! is_string( $sidebarsValue ) ) {
-			return array();
-		}
-
-		// Security: 'allowed_classes' => false prevents PHP Object Injection.
-		$sidebars = @unserialize( $sidebarsValue, array( 'allowed_classes' => false ) );
-		if ( ! is_array( $sidebars ) ) {
+		if ( $inventory['sidebars_corrupt'] ) {
 			return array(
 				AuditFinding::warning(
 					$this->name(),
@@ -136,28 +129,26 @@ final class MenuWidgetIntegrityCheck implements AuditCheckInterface {
 			);
 		}
 
-		$widgetOptionsCache = array();
-		$findings           = array();
-		foreach ( $sidebars as $sidebarId => $widgetIds ) {
+		if ( $inventory['sidebars'] === null ) {
+			return array();
+		}
+
+		$findings = array();
+		foreach ( $inventory['sidebars'] as $sidebarId => $widgetIds ) {
 			if ( ! is_array( $widgetIds ) || $sidebarId === 'wp_inactive_widgets' || $sidebarId === 'array_version' ) {
 				continue;
 			}
 
 			foreach ( $widgetIds as $widgetId ) {
-				if ( ! is_string( $widgetId ) || ! preg_match( '/^(?<type>[a-z0-9_-]+)-(?<index>\d+)$/', $widgetId, $m ) ) {
+				$parsedId = is_string( $widgetId ) ? WidgetInventory::parseWidgetId( $widgetId ) : null;
+				if ( $parsedId === null ) {
 					continue;
 				}
 
-				$widgetOptionName = 'widget_' . $m['type'];
-				if ( ! array_key_exists( $widgetOptionName, $widgetOptionsCache ) ) {
-					$widgetOptionsCache[ $widgetOptionName ] = $source->fetchScalar(
-						"SELECT option_value FROM {$optionsTable} WHERE option_name = :name LIMIT 1",
-						array( 'name' => $widgetOptionName )
-					);
-				}
-				$widgetOptionValue = $widgetOptionsCache[ $widgetOptionName ];
+				$widgetOptionName = 'widget_' . $parsedId['type'];
+				$widgetOption = $inventory['widget_options'][ $widgetOptionName ] ?? null;
 
-				if ( ! is_string( $widgetOptionValue ) ) {
+				if ( $widgetOption === null ) {
 					$findings[] = AuditFinding::warning(
 						$this->name(),
 						sprintf(
@@ -176,9 +167,7 @@ final class MenuWidgetIntegrityCheck implements AuditCheckInterface {
 					continue;
 				}
 
-				// Security: 'allowed_classes' => false prevents PHP Object Injection.
-				$instances = @unserialize( $widgetOptionValue, array( 'allowed_classes' => false ) );
-				if ( ! is_array( $instances ) ) {
+				if ( $widgetOption['status'] === 'corrupt' ) {
 					$findings[] = AuditFinding::warning(
 						$this->name(),
 						sprintf(
@@ -197,7 +186,7 @@ final class MenuWidgetIntegrityCheck implements AuditCheckInterface {
 					continue;
 				}
 
-				if ( ! array_key_exists( (int) $m['index'], $instances ) ) {
+				if ( ! array_key_exists( $parsedId['index'], $widgetOption['instances'] ) ) {
 					$findings[] = AuditFinding::warning(
 						$this->name(),
 						sprintf(
@@ -205,7 +194,7 @@ final class MenuWidgetIntegrityCheck implements AuditCheckInterface {
 							$blogId,
 							(string) $sidebarId,
 							$widgetId,
-							(int) $m['index'],
+							$parsedId['index'],
 							$widgetOptionName
 						),
 						array(

@@ -98,10 +98,19 @@ merge-multisite/
 │   │   ├── SiteSelector.php       # Reads wp_blogs/wp_site, applies include/exclude + deleted filter
 │   │   ├── UserMigrator.php
 │   │   ├── TermMigrator.php       # categories + tags, cross-site merge/case rules
+│   │   ├── MediaInventory.php     # attachment rows + disk paths + fingerprints (shared w/ audit)
+│   │   ├── MediaCollisionPlan.php # pure dedup/`{base}_site{id}.{ext}` rename decisions
 │   │   ├── MediaMigrator.php      # files + attachment posts, dedup/rename (also standalone --move-media-only)
+│   │   ├── PostHierarchyResolver.php # parent/child slug paths for pages + hierarchical CPTs
 │   │   ├── PostMigrator.php       # posts/pages/CPTs + postmeta
+│   │   ├── CommentQueryHelper.php # keyset comment pagination + chunked commentmeta
 │   │   ├── CommentMigrator.php
+│   │   ├── MenuInventory.php      # nav_menu terms + items + _menu_item_* meta (shared w/ audit)
+│   │   ├── WidgetInventory.php    # sidebars_widgets + widget_% options model (shared w/ audit)
 │   │   ├── MenuMigrator.php       # nav menus + widgets (theme_mods/sidebars_widgets)
+│   │   ├── BlockAttributeRewriter.php # {"ref":id} block attrs remapped via IdMap
+│   │   ├── ContactPageCanonicalizer.php # contact slug detection + /contact/ mapping
+│   │   ├── GuidGenerator.php      # destination GUIDs (?p={id} posts, uploads URL attachments)
 │   │   ├── OptionsMigrator.php    # generic + per-plugin option/table handlers
 │   │   ├── UrlRewriter.php        # domain collapsing + internal-link rewriting
 │   │   └── RedirectMapBuilder.php # multi-format redirect export

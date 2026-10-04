@@ -14,16 +14,16 @@ final class ContentAuditRow {
 
 	/**
 	 * @param array<string, string[]> $categoryFindings Keyed by detector category, e.g. "form_plugin" => ["WPForms"].
-	 */
-	/**
-	 * @param string $template       The template this post renders through
-	 *                               (see PageTemplateResolver), '' when n/a.
-	 * @param string $templateStatus Why the template needs review
-	 *                               ('customized', 'stale-customization', ...),
-	 *                               '' when nothing per-page is needed.
-	 * @param string $content        Raw post_content; populated only for
-	 *                               post types the reports quote verbatim
-	 *                               (currently custom_css), '' otherwise.
+	 * @param string                  $path           Hierarchical slug path (`parent/child`) for
+	 *                                                building `original_url`; '' falls back to $slug.
+	 * @param string                  $template       The template this post renders through
+	 *                                                (see PageTemplateResolver), '' when n/a.
+	 * @param string                  $templateStatus Why the template needs review
+	 *                                                ('customized', 'stale-customization', ...),
+	 *                                                '' when nothing per-page is needed.
+	 * @param string                  $content        Raw post_content; populated only for
+	 *                                                post types the reports quote verbatim
+	 *                                                (currently custom_css), '' otherwise.
 	 */
 	public function __construct(
 		public readonly int $blogId,
@@ -34,6 +34,7 @@ final class ContentAuditRow {
 		public readonly string $slug,
 		public readonly string $postTitle,
 		public readonly array $categoryFindings,
+		public readonly string $path = '',
 		public readonly string $template = '',
 		public readonly string $templateStatus = '',
 		public readonly string $content = '',
@@ -52,7 +53,7 @@ final class ContentAuditRow {
 			'post_status' => $this->postStatus,
 			'post_title' => $this->postTitle,
 			'slug' => $this->slug,
-			'original_url' => 'https://' . $this->domain . '/' . trim( $this->slug, '/' ) . '/',
+			'original_url' => 'https://' . $this->domain . '/' . trim( $this->path !== '' ? $this->path : $this->slug, '/' ) . '/',
 			'template' => $this->template,
 			'template_status' => $this->templateStatus,
 		);
