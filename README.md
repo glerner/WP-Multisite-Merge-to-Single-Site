@@ -37,8 +37,9 @@ cp config/option-keys.sample.php config/option-keys.php
 
 Edit `config/config.php` with your source/destination database
 credentials and table prefixes (the network's table prefix is never
-assumed to be `wp_` -- it's always read from config). Edit
-`config/sites.php` to exclude any subsites you don't want merged.
+assumed to be `wp_` -- it's always read from config).
+
+Edit `config/sites.php` to exclude any subsites you don't want merged.
 
 `config.php`, `sites.php`, `option-keys.php`, and `term-overrides.php`
 are gitignored since they contain real credentials/site data; only the
@@ -66,7 +67,7 @@ wp config create \
   --dbhost=localhost \
   --path=/path/to/destination
 
-# 3. Create the database (if not already created)
+# 3. Create the database (if not already created by your local development environment)
 wp db create --path=/path/to/destination
 
 # 4. Install WordPress as a single site with an initial admin user
@@ -89,6 +90,14 @@ After running `harden-admin-id.php`, set `'admin_user_id'` in `config/config.php
 
 ## Tools
 
+### `bin/test-connections.php`
+
+Pre-flight connection verification: connects to both the source multisite and destination single-site databases simultaneously within a single PHP process, verifies that table prefixes match real tables, checks user and site counts, validates that `admin_user_id` in `config.php` matches a real destination user, and tests readability/writeability of the uploads directories.
+
+```bash
+php bin/test-connections.php
+```
+
 ### `bin/multisite-integrity-checker.php`
 
 Read-only pre-flight audit of the source multisite: orphaned post
@@ -103,7 +112,30 @@ php bin/multisite-integrity-checker.php
 php bin/multisite-integrity-checker.php --strict
 ```
 
-Reports are written to `var/reports/integrity-*.{md,json}`.
+`--list-sites` prints every subsite as paste-ready `sites.php` entries
+(one `array( ... )` per site, with `include` and `category_name` -- the
+site's title -- already filled in), so you can drop them straight into
+`config/sites.php`. Deleted sites are listed too, marked
+`'include' => false, 'deleted' => true` -- `deleted` is informational
+only (`SiteConfig` ignores it); review those lines and correct any
+site that shouldn't be deleted. To generate the complete
+file instead, redirect the PHP variant:
+
+```bash
+php bin/multisite-integrity-checker.php --list-sites-php > config/sites.php
+```
+
+Then edit `config/sites.php`: flip `'include' => true` to
+`'include' => false` for any subsite you want to leave out of the merge,
+and adjust `'category_name'` (defaults to the site's title) if you want
+a shorter destination category name. That name becomes the WordPress
+category that site's content is merged under, so keep it to 1-3 words;
+the full site title is preserved automatically in the category's
+description, and `'category_slug'` is derived from the name unless you
+set it. Re-running `--list-sites-php` is safe -- it keeps the
+include/category overrides already in the file.
+
+Reports are written to `var/reports/integrity-*.md`, and to `var/reports/integrity-*.json` (same information, 2 formats).
 
 ### `bin/site-audit.php`
 
@@ -117,12 +149,13 @@ standardize on.
 
 ```bash
 php bin/site-audit.php --site=7
+php bin/site-audit.php            # bare invocation = --all-sites
 php bin/site-audit.php --all-sites
-php bin/site-audit.php --all-sites --post-types=post,page
+php bin/site-audit.php --post-types=post,page
 ```
 
-Either `--site` or `--all-sites` is required; running bare prints usage
-and exits.
+Running bare is equivalent to `--all-sites` (every non-deleted,
+included site); use `--site=<blog_id>` to scan a single subsite.
 
 Each scanned page also gets `template` / `template_status` columns: which
 template it renders through (resolved via `_wp_page_template` or the
@@ -136,16 +169,41 @@ a theme's `Template:` style.css header disagrees with the `template`
 option (e.g. after a manual theme switch), the header wins and a warning
 is logged.
 
-Output goes to `var/reports/site-audit-*.{csv,json,xlsx}` (xlsx when
-ext-zip is available) plus a `-summary.md` tally, e.g. "12 pages use
+Output goes to `var/reports/site-audit-*.csv`, `var/reports/site-audit-*.json`, and `var/reports/site-audit-*.xlsx` (xlsx when
+ext-zip is available)
+
+Also output is a `-summary.md` tally, e.g. "12 pages use
 Contact Form 7, 3 use WPForms", with a "Page templates needing work"
-section listing stale/customized/missing templates by site. A
-`site-audit-needs-review-*.csv` lists the pages likely needing manual
+section listing stale/customized/missing templates by site.
+
+A `site-audit-needs-review-*.csv` lists the pages likely needing manual
 post-merge edits.
+
+### Output to Spreadsheet format .xlsx
+
+In the `.xlsx` workbook, a second `block-inventory` tab lists every
+(non-core) block usage -- one row per block found on a page -- with
+owning plugin, occurrence total, and the page's URL, so filtering the
+"Used On URL" column shows every block on a page and filtering the
+block column shows every page (URL) that uses a given block.
+A third `needs-review` tab carries the same rows as the `site-audit-needs-review` CSV (original + guessed destination URL, detected plugins, raw data dumps).
+This workbook opens in any spreadsheet app that reads the Open XML format:
+Google Sheets (cloud), and cross-platform apps (Windows, OS/X, Linux)
+Microsoft Excel, LibreOffice / OpenOffice Calc (free), WPS Office; and
+Apple Numbers (OS/X). On a very large network the block tab can run to
+thousands of rows -- pass `--site=<blog_id>` to audit one subsite at a
+time when that's all you need.
+
+The `.xlsx` requires PHP's `zip` extension (`php -m | grep zip` to
+check). If it's missing: Debian/Ubuntu `sudo apt install php-zip` (or
+`php8.x-zip` matching your PHP version), Homebrew PHP on macOS ships it
+enabled, and on Windows uncomment `extension=zip` in `php.ini`. The CSV
+is written regardless, so a missing extension degrades gracefully
+instead of failing.
 
 ### `bin/template-screenshots.php`
 
-Read-only visual inventory: screenshots each included site's templates
+Read-only visual inventory: screenshots of each included site's templates
 and template parts (header/footer/sidebar) with shot-scraper, so theme
 output can be compared across sites before the merge. Requires
 `shot-scraper` (see `docs/making-screenshots.md`).
@@ -179,10 +237,22 @@ catches anything the more specific detectors don't recognize yet) is
 meant to surface what's actually out there, so the specific detectors
 can be refined from evidence rather than guesswork.
 
-If you run this against your own multisite and find a block, shortcode,
-or plugin signature that isn't recognized, please report it at
+You don't need to wait for a code change to teach the audit a new
+signal -- `config/plugin-roles.php` (see
+`config/plugin-roles.sample.php`) is read at runtime:
+
+- `signal_map` — map a block namespace or shortcode to a plugin's
+  display name and directory slug (e.g. `'wsf' => array('name' =>
+  'WS Form', 'slugs' => array('ws-form'))`).
+- `detector_extras` — add signature-table entries for the
+  table-driven detectors (`form_plugin`, `seo_plugin`, `gallery`,
+  `shortcodes`), matching raw content signatures like
+  `wp:uagb\/forms\b`.
+
+If a signature is genuinely new (not just missing from your config),
+please also report it at
 **[glerner.com/contact](https://glerner.com/contact)** so it can be
-added.
+added to the built-in lists for everyone.
 
 ### `bin/harden-admin-id.php`
 
@@ -199,14 +269,6 @@ or running `migrate.php` against that destination.
 php bin/harden-admin-id.php --dry-run
 php bin/harden-admin-id.php
 php bin/harden-admin-id.php --new-id=42
-```
-
-### `bin/test-connections.php`
-
-Pre-flight connection verification: connects to both the source multisite and destination single-site databases simultaneously within a single PHP process, verifies that table prefixes match real tables, checks user and site counts, validates that `admin_user_id` in `config.php` matches a real destination user, and tests readability/writeability of the uploads directories.
-
-```bash
-php bin/test-connections.php
 ```
 
 ### `bin/migrate.php` (in progress)

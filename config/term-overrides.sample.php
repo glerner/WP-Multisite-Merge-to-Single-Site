@@ -14,13 +14,13 @@
  * @package MergeMultisite
  */
 
-return [
-    'taxonomy' => [
-        'category' => [
-            // 'php' => 'PHP',
-        ],
-        'post_tag' => [
-            // 'msr' => 'MSR',
-        ],
-    ],
-];
+return array(
+	'taxonomy' => array(
+		'category' => array(
+			// 'php' => 'PHP',
+		),
+		'post_tag' => array(
+			// 'msr' => 'MSR',
+		),
+	),
+);

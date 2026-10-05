@@ -11,7 +11,7 @@
  * a new content signal -- nothing needs to be copied here just to keep
  * working; prefix a family slug with '-' to remove a built-in.
  *
- * Four optional sections:
+ * Five optional sections:
  *
  * 1. 'conflict_families'
  *   family-label => list of installed-plugin directory slugs. A family is
@@ -41,10 +41,19 @@
  *
  * 3. 'not_a_plugin'
  *   tokens that look like signals but are platform/core output, not a plugin.
+ *   Affects only the "Plugin usage" rollup, NOT the block-inventory XLSX
+ *   tab -- the inventory is a complete census; filter its Block column
+ *   in the spreadsheet to hide a known namespace's rows.
  *
  * 4. 'detector_extras'
  *   Augments signature tables for table-driven detectors ('form_plugin',
  *   'seo_plugin', 'gallery', 'shortcodes').
+ *
+ * 5. 'suppressions'
+ *   Plugin-specific finding suppressions (same rule shape as config.php
+ *   "suppressions", plus a 'check-name' => slug[] shorthand) -- keeps all
+ *   plugin configuration in one file; general, non-plugin rules stay in
+ *   config.php. Both are merged.
  *
  *   HOW TO CONVERT SPREADSHEET BLOCKS TO CONTENT SIGNATURES:
  *     In the site-audit spreadsheet, the "blocks" column displays block identifiers
@@ -94,8 +103,36 @@ return array(
 	),
 
 	'not_a_plugin'      => array(
-		// Tokens that represent core editor output rather than plugins:
-		// 'core-image-block',
+		// Tokens that look like plugin signals but are platform/core
+		// output, never a plugin. Matching is by condensed prefix and
+		// longest match wins, so keep tokens specific. Working example:
+		// core WordPress shortcodes ([audio], [video], [playlist]) the
+		// audit would otherwise list as unknown signals:
+		// 'audio',
+		// 'video',
+		// 'playlist',
+		// Block example: Jetpack blocks in content while Jetpack is NOT
+		// installed (e.g. imported posts) surface as an unknown signal:
+		// 'jetpack',
+		// Does not apply to the block-inventory XLSX tab -- filter its
+		// "Block (Namespace/Name)" column there instead.
+	),
+
+	'suppressions'      => array(
+		// Plugin-specific finding suppressions live HERE (all plugin
+		// configuration in one file); general rules stay in config.php.
+		// Both are merged. 'plugin' is the plugin's directory slug --
+		// the folder name in wp-content/plugins, as shown by
+		// `wp plugin list`.
+		//
+		// Shorthand (when every rule shares one check name):
+		// 'check-name' => array( 'slug1', 'slug2' ) expands to one rule
+		// per slug with context 'plugin' => slug:
+		'plugin-data.no-rule' => array(
+			// 'my-plugin',
+		),
+		// Long form (any context keys, same shape as config.php):
+		// array( 'check' => 'media-files.missing-file', 'blog_id' => 26 ),
 	),
 
 	'detector_extras'   => array(

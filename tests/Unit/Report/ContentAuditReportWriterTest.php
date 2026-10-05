@@ -146,6 +146,115 @@ final class ContentAuditReportWriterTest extends TestCase {
 		self::assertStringNotContainsString( 'Customizer Additional CSS', $summary );
 	}
 
+	/**
+	 * The blockInventory() method emits one row per distinct (block,
+	 * page) pair, resolves the owning plugin from the PluginUsageRollup
+	 * result (used entities carry name + slug; not_installed carry name
+	 * only), and repeats the block's total occurrence count on each of
+	 * its rows. Filtering "Used On URL" therefore yields every page
+	 * using a block.
+	 */
+	public function testBlockInventoryEmitsOneRowPerBlockUrlPair(): void {
+		$writer = new ContentAuditReportWriter();
+
+		$rows = array(
+			new ContentAuditRow(
+				blogId: 20,
+				domain: 'a.test',
+				postId: 1,
+				postType: 'page',
+				postStatus: 'publish',
+				slug: 'shop',
+				postTitle: 'Shop',
+				categoryFindings: array(
+					'blocks' => array( 'sureforms/form-selector', 'uagb/forms' ),
+				),
+			),
+			new ContentAuditRow(
+				blogId: 33,
+				domain: 'b.test',
+				postId: 2,
+				postType: 'page',
+				postStatus: 'publish',
+				slug: 'contact',
+				postTitle: 'Contact',
+				categoryFindings: array(
+					'blocks' => array( 'sureforms/form-selector' ),
+				),
+			),
+		);
+
+		$pluginUsage = array(
+			'used' => array(
+				'SureForms' => array(
+					'slug'    => 'sureforms',
+					'signals' => array( 'blocks|sureforms/form-selector' ),
+					'sites'   => array( 20, 33 ),
+				),
+				'Spectra (Ultimate Addons for Gutenberg)' => array(
+					'slug'    => 'ultimate-addons-for-gutenberg',
+					'signals' => array( 'blocks|uagb/forms' ),
+					'sites'   => array( 20 ),
+				),
+			),
+			'not_installed' => array(),
+		);
+
+		$inventory = $writer->blockInventory( $rows, $pluginUsage );
+
+		// sureforms/form-selector has two usage rows (one per URL) with
+		// the block's total occurrences repeated; uagb/forms one row.
+		self::assertCount( 3, $inventory );
+
+		self::assertSame( 'sureforms/form-selector', $inventory[0]['block'] );
+		self::assertSame( 'SureForms', $inventory[0]['plugin'] );
+		self::assertSame( 'sureforms', $inventory[0]['plugin_slug'] );
+		self::assertSame( 2, $inventory[0]['occurrences'] );
+		self::assertSame( 'https://a.test/shop/', $inventory[0]['url'] );
+
+		self::assertSame( 'sureforms/form-selector', $inventory[1]['block'] );
+		self::assertSame( 2, $inventory[1]['occurrences'] );
+		self::assertSame( 'https://b.test/contact/', $inventory[1]['url'] );
+
+		self::assertSame( 'uagb/forms', $inventory[2]['block'] );
+		self::assertSame( 'Spectra (Ultimate Addons for Gutenberg)', $inventory[2]['plugin'] );
+		self::assertSame( 'ultimate-addons-for-gutenberg', $inventory[2]['plugin_slug'] );
+		self::assertSame( 1, $inventory[2]['occurrences'] );
+		self::assertSame( 'https://a.test/shop/', $inventory[2]['url'] );
+	}
+
+	/**
+	 * A block with no resolved owner (unmapped namespace, or no
+	 * pluginUsage passed in) still appears in the inventory with empty
+	 * owner columns -- the census must be complete, and a blank owner
+	 * is a signal to map the namespace in plugin-roles.php.
+	 */
+	public function testBlockInventoryKeepsBlocksWithoutResolvedOwner(): void {
+		$writer = new ContentAuditReportWriter();
+
+		$rows = array(
+			new ContentAuditRow(
+				blogId: 20,
+				domain: 'a.test',
+				postId: 1,
+				postType: 'page',
+				postStatus: 'publish',
+				slug: 'home',
+				postTitle: 'Home',
+				categoryFindings: array( 'blocks' => array( 'mystery-namespace/widget' ) ),
+			),
+		);
+
+		$inventory = $writer->blockInventory( $rows );
+
+		self::assertCount( 1, $inventory );
+		self::assertSame( 'mystery-namespace/widget', $inventory[0]['block'] );
+		self::assertSame( '', $inventory[0]['plugin'] );
+		self::assertSame( '', $inventory[0]['plugin_slug'] );
+		self::assertSame( 1, $inventory[0]['occurrences'] );
+		self::assertSame( 'https://a.test/home/', $inventory[0]['url'] );
+	}
+
 	private function postRow( int $blogId, string $domain, string $slug, string $status ): ContentAuditRow {
 		return new ContentAuditRow(
 			blogId: $blogId,

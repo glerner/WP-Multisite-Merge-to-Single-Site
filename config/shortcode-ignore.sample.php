@@ -14,6 +14,6 @@
  *
  * Copy to config/shortcode-ignore.php (gitignored).
  */
-return [
-    // 'example-tag',
-];
+return array(
+	// 'example-tag',
+);

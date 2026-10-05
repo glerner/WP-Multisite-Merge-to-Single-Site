@@ -10,13 +10,15 @@
  *
  * Usage:
  *   php bin/site-audit.php --site=7
+ *   php bin/site-audit.php            # bare invocation = --all-sites
  *   php bin/site-audit.php --all-sites
- *   php bin/site-audit.php --all-sites --post-types=post,page
- *   php bin/site-audit.php --all-sites --search=cialis,viagra
+ *   php bin/site-audit.php --post-types=post,page
+ *   php bin/site-audit.php --search=cialis,viagra
  *
  * Options:
  *   --site=<blog_id>     Scan only this one subsite.
- *   --all-sites          Scan every non-deleted, included site.
+ *   --all-sites          Scan every non-deleted, included site (the
+ *                        default when no --site is given).
  *   --post-types=a,b,c   Restrict to these post types (default: all
  *                        except config.php "excluded_post_types").
  *   --search=a,b,c       Instead of the detector pass, do a plain
@@ -83,9 +85,7 @@ try {
 	$source->pdo();
 	$siteSelector = new SiteSelector( $source );
 
-	if ( $args->has( 'all-sites' ) ) {
-		$sites = $siteSelector->listIncludedSites( $config );
-	} elseif ( $args->has( 'site' ) ) {
+	if ( $args->has( 'site' ) ) {
 		$blogId = (int) $args->get( 'site' );
 		$sites  = array_values(
 			array_filter(
@@ -99,8 +99,9 @@ try {
 			exit( 1 );
 		}
 	} else {
-		$logger->error( 'Specify either --site=<blog_id> or --all-sites.' );
-		exit( 1 );
+		// Bare invocation (or --all-sites) scans every non-deleted,
+		// included site.
+		$sites = $siteSelector->listIncludedSites( $config );
 	}
 } catch ( ConnectionException $exception ) {
 	$logger->error( $exception->getMessage() );
@@ -284,7 +285,9 @@ $paths = ( new ContentAuditReportWriter() )->write(
 	$projectRoot . '/var/reports',
 	'site-audit-' . date( 'Ymd-His' ),
 	$pluginUsage,
-	$config->spreadsheetFormat
+	$config->spreadsheetFormat,
+	$details,
+	$config->destinationUrl
 );
 
 // The "needs review" CSV: only pages carrying a page-builder /

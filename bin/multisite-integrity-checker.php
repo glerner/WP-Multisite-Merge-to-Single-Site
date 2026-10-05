@@ -13,8 +13,11 @@
  * Options:
  *   --strict          Exit non-zero on warnings too, not just errors.
  *   --config          Directory containing config.php/sites.php/etc. Defaults to ../config.
- *   --list-sites      Human-readable site list (blog_id, domain, included/deleted, title).
- *   --list-sites-php  Ready-to-paste sites.php PHP source (see SitesPhpExporter) --
+ *   --list-sites      Paste-ready sites.php entries (one array(...) per
+ *                     site, include/category_name included; deleted sites
+ *                     appear too, marked 'include' => false + 'deleted' =>
+ *                     true) to drop into config/sites.php.
+ *   --list-sites-php  Complete sites.php file (see SitesPhpExporter) --
  *                     preserves any include/category overrides already in
  *                     sites.php, so re-running this after editing it is safe.
  *   --include-deleted Also audit sites WordPress marks as deleted
@@ -86,24 +89,20 @@ try {
 	}
 
 	if ( $args->has( 'list-sites' ) ) {
-		foreach ( $siteSelector->listAllSites( $config ) as $site ) {
-			printf(
-				'%-6d %-40s included=%s deleted=%s%s' . PHP_EOL,
-				$site->blogId,
-				$site->domain,
-				$site->included ? 'yes' : 'no',
-				$site->deleted ? 'yes' : 'no',
-				$site->deleted ? '' : ' title="' . $site->title . '"'
-			);
+		// Paste-ready sites.php entries (one array(...) per site), so
+		// they can be dropped straight into config/sites.php. For the
+		// complete file (with the <?php header), use --list-sites-php.
+		foreach ( ( new SitesPhpExporter() )->exportEntries( $siteSelector->listAllSites( $config ) ) as $entry ) {
+			echo '    ' . $entry . ',' . PHP_EOL;
 		}
 		exit( 0 );
 	}
 
 	if ( $args->has( 'include-deleted' ) ) {
 		// All sites, deleted ones included. They remain marked
-		// deleted/included=false (so e.g. SitesPhpExporter would still
-		// omit them); this only affects what the AUDIT looks at, never
-		// what the migrator would write.
+		// deleted/included=false (SitesPhpExporter exports them with
+		// 'include' => false + 'deleted' => true); this only affects what
+		// the AUDIT looks at, never what the migrator would write.
 		$sites = $siteSelector->listAllSites( $config );
 		$logger->info( sprintf( 'Running integrity checks against %d site(s), INCLUDING deleted ones.', count( $sites ) ) );
 	} else {

@@ -12,7 +12,7 @@ use PHPUnit\Framework\TestCase;
 #[CoversClass( SitesPhpExporter::class )]
 final class SitesPhpExporterTest extends TestCase {
 
-	public function testExportsOneEntryPerNonDeletedSite(): void {
+	public function testExportsOneEntryPerSite(): void {
 		$exporter = new SitesPhpExporter();
 
 		$php = $exporter->export(
@@ -32,7 +32,7 @@ final class SitesPhpExporterTest extends TestCase {
 		);
 	}
 
-	public function testSkipsDeletedSites(): void {
+	public function testMarksDeletedSitesExcludedButPresent(): void {
 		$exporter = new SitesPhpExporter();
 
 		$php = $exporter->export(
@@ -41,7 +41,12 @@ final class SitesPhpExporterTest extends TestCase {
 			)
 		);
 
-		self::assertStringNotContainsString( 'gljob.lernerconsulting.info', $php );
+		// Deleted sites stay visible for review: include=false plus a
+		// 'deleted' documentation key SiteConfig ignores.
+		self::assertStringContainsString(
+			"array( 'blog_id' => 26, 'domain' => 'gljob.lernerconsulting.info', 'include' => false, 'deleted' => true, 'category_name' => NULL ),",
+			$php
+		);
 	}
 
 	public function testIncludesCategorySlugOnlyWhenSet(): void {
@@ -74,6 +79,28 @@ final class SitesPhpExporterTest extends TestCase {
 		// var_export() writes single-quoted strings, escaping an
 		// embedded apostrophe as \'.
 		self::assertStringContainsString( "'George\\'s Site'", $php );
+	}
+
+	public function testExportEntriesReturnsPasteReadyLinesWithoutWrapper(): void {
+		$exporter = new SitesPhpExporter();
+
+		$entries = $exporter->exportEntries(
+			array(
+			new Site( 1, 'lc.lndo.site', '/', 'WP Website Mastery', false, true, 'WP Website Mastery' ),
+			new Site( 56, 'hhtest.lernerconsulting.info', '/', 'HH Test', true, false ),
+			)
+		);
+
+		// One array(...) line per site (deleted ones included, marked
+		// include=false + deleted=true), no <?php header, no return
+		// wrapper -- exactly what --list-sites prints.
+		self::assertSame(
+			array(
+			"array( 'blog_id' => 1, 'domain' => 'lc.lndo.site', 'include' => true, 'category_name' => 'WP Website Mastery' )",
+			"array( 'blog_id' => 56, 'domain' => 'hhtest.lernerconsulting.info', 'include' => false, 'deleted' => true, 'category_name' => NULL )",
+			),
+			$entries
+		);
 	}
 
 	public function testProducesValidPhpThatReturnsAnArray(): void {

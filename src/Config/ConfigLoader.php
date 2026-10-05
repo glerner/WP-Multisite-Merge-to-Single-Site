@@ -71,6 +71,19 @@ final class ConfigLoader {
 		$pluginRoles = $this->optionalArrayFile( 'plugin-roles.php' );
 		$detectorExtras = is_array( $pluginRoles['detector_extras'] ?? null ) ? $pluginRoles['detector_extras'] : array();
 
+		// Suppression rules can live in config.php (general rules) or in
+		// plugin-roles.php ('suppressions' -- plugin-specific rules, so
+		// all plugin configuration stays in one file). Both apply.
+		$suppressionRules = array_merge(
+			$this->normalizeSuppressions( $pluginRoles['suppressions'] ?? null ),
+			$this->normalizeSuppressions( $config['suppressions'] ?? null )
+		);
+
+		$divergentOptionExclusions = array_map(
+			'strval',
+			array_values( $this->optionalArrayFile( 'divergent-options.php' ) )
+		);
+
 		$spreadsheetFormat = (string) ( $config['spreadsheet_format'] ?? 'xlsx' );
 		if ( ! in_array( $spreadsheetFormat, array( 'xlsx', 'csv', 'both' ), true ) ) {
 			throw new ConfigException(
@@ -93,14 +106,7 @@ final class ConfigLoader {
 			pluginOptionRules: $pluginOptionRules,
 			termOverrides: $termOverrides,
 			wpscanApiToken: isset( $config['wpscan_api_token'] ) ? (string) $config['wpscan_api_token'] : null,
-			suppressions: array_values(
-				array_filter(
-					array_map(
-						static fn ( $rule ): array => is_array( $rule ) ? $rule : array( 'check' => (string) $rule ),
-						is_array( $config['suppressions'] ?? null ) ? $config['suppressions'] : array()
-					)
-				)
-			),
+			suppressions: $suppressionRules,
 			mediaSearchPaths: array_map(
 				fn ( string $path ): string => $this->expandHome( $path ),
 				array_map( 'strval', is_array( $config['media_search_paths'] ?? null ) ? $config['media_search_paths'] : array() )
@@ -113,6 +119,7 @@ final class ConfigLoader {
 			mainSite: isset( $config['main_site'] ) ? (int) $config['main_site'] : null,
 			pluginRoles: $pluginRoles,
 			detectorExtras: $detectorExtras,
+			divergentOptionExclusions: $divergentOptionExclusions,
 		);
 	}
 
@@ -161,6 +168,48 @@ final class ConfigLoader {
 			return ( $homeEnv === false ? '' : $homeEnv ) . substr( $path, 1 );
 		}
 		return $path;
+	}
+
+	/**
+	 * Normalize one "suppressions" config section into rule arrays with
+	 * a "check" key. Two shapes are accepted per section:
+	 *
+	 *   - Long form (any context keys): array('check' => 'name',
+	 *     'plugin' => 'slug', ...) -- the same shape config.php uses.
+	 *   - Shorthand: 'check-name' => array('slug1', 'slug2', ...)
+	 *     expands to one long-form rule per slug with context
+	 *     'plugin' => slug. Handy when every rule in a section shares
+	 *     the same check name (the common plugin-suppression case).
+	 *
+	 * A bare string rule becomes array('check' => string); anything
+	 * non-array is dropped.
+	 *
+	 * @param mixed $rules Raw section from config.php or plugin-roles.php.
+	 *
+	 * @return array<int, array<string, mixed>>
+	 */
+	private function normalizeSuppressions( mixed $rules ): array {
+		if ( ! is_array( $rules ) ) {
+			return array();
+		}
+
+		$normalized = array();
+		foreach ( $rules as $key => $rule ) {
+			if ( is_string( $key ) && is_array( $rule ) && array_keys( $rule ) === range( 0, count( $rule ) - 1 ) ) {
+				// 'check-name' => array('slug1', ...) shorthand.
+				foreach ( $rule as $slug ) {
+					$normalized[] = array(
+						'check'  => $key,
+						'plugin' => (string) $slug,
+					);
+				}
+				continue;
+			}
+
+			$normalized[] = is_array( $rule ) ? $rule : array( 'check' => (string) $rule );
+		}
+
+		return array_values( array_filter( $normalized ) );
 	}
 
 	/**

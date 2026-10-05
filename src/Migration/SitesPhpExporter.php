@@ -20,10 +20,11 @@ final class SitesPhpExporter {
 
 	/**
 	 * @param Site[] $sites Typically every site from
-	 *                      SiteSelector::listAllSites() -- deleted
-	 *                      sites are skipped since they're already
-	 *                      excluded automatically regardless of
-	 *                      sites.php (PLAN.md §4.2).
+	 *                      SiteSelector::listAllSites() -- including
+	 *                      deleted ones, which are emitted with
+	 *                      'include' => false + 'deleted' => true so the
+	 *                      config lists every site for review (PLAN.md
+	 *                      §4.2 keeps them excluded automatically).
 	 */
 	public function export( array $sites ): string {
 		$lines = array(
@@ -45,12 +46,8 @@ final class SitesPhpExporter {
 			'return array(',
 		);
 
-		foreach ( $sites as $site ) {
-			if ( $site->deleted ) {
-				continue;
-			}
-
-			$lines[] = '    ' . $this->exportEntry( $site ) . ',';
+		foreach ( $this->exportEntries( $sites ) as $entry ) {
+			$lines[] = '    ' . $entry . ',';
 		}
 
 		$lines[] = ');';
@@ -59,13 +56,42 @@ final class SitesPhpExporter {
 		return implode( "\n", $lines );
 	}
 
+	/**
+	 * One paste-ready `array( ... )` entry per site -- the same lines
+	 * that make up the body of export(). Deleted sites are included,
+	 * marked 'include' => false + 'deleted' => true (a documentation
+	 * key SiteConfig ignores), so nothing in the network is hidden
+	 * from review.
+	 *
+	 * `--list-sites` prints these directly so entries can be pasted
+	 * into an existing config/sites.php, while `--list-sites-php`
+	 * wraps them in a complete file.
+	 *
+	 * @param Site[] $sites
+	 *
+	 * @return string[]
+	 */
+	public function exportEntries( array $sites ): array {
+		$entries = array();
+		foreach ( $sites as $site ) {
+			$entries[] = $this->exportEntry( $site );
+		}
+
+		return $entries;
+	}
+
 	private function exportEntry( Site $site ): string {
 		$fields = array(
 			'blog_id' => $site->blogId,
 			'domain' => $site->domain,
 			'include' => $site->included,
-			'category_name' => $site->categoryName,
 		);
+
+		if ( $site->deleted ) {
+			$fields['deleted'] = true;
+		}
+
+		$fields['category_name'] = $site->categoryName;
 
 		if ( $site->categorySlug !== null ) {
 			$fields['category_slug'] = $site->categorySlug;

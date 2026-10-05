@@ -5,6 +5,16 @@
     <file>bin</file>
     <file>src</file>
     <file>tests</file>
+    <!-- Committed user-facing config templates; real config/*.php are
+         gitignored and not linted. Samples are listed explicitly because
+         phpcs does not glob file entries, and errors if one is renamed. -->
+    <file>config/config.sample.php</file>
+    <file>config/divergent-options.sample.php</file>
+    <file>config/option-keys.sample.php</file>
+    <file>config/plugin-roles.sample.php</file>
+    <file>config/shortcode-ignore.sample.php</file>
+    <file>config/sites.sample.php</file>
+    <file>config/term-overrides.sample.php</file>
 
     <arg name="extensions" value="php"/>
     <arg value="-colors"/>

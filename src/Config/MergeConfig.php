@@ -34,6 +34,10 @@ final class MergeConfig {
 	 *                                                              ends with "*") plus optional context
 	 *                                                              key/value criteria, e.g.
 	 *                                                              ['check' => 'plugin-data.*', 'plugin' => 'x'].
+	 *                                                              Merged from config.php and the
+	 *                                                              'suppressions' section of
+	 *                                                              plugin-roles.php (plugin-specific
+	 *                                                              rules live there).
 	 * @param string[]                             $mediaSearchPaths Extra directories searched for files
 	 *                                                              missing from uploads, so a copy
 	 *                                                              script can be generated for them.
@@ -60,6 +64,10 @@ final class MergeConfig {
 	 *                                                              plugin-roles.php: per-detector
 	 *                                                              signature-table additions, keyed by
 	 *                                                              each detector's category().
+	 * @param string[]                             $divergentOptionExclusions Additional option names the
+	 *                                                              divergent-site-options check ignores
+	 *                                                              (from divergent-options.php), on top
+	 *                                                              of its built-in exclusion list.
 	 */
 	public function __construct(
 		public readonly DatabaseConfig $source,
@@ -83,6 +91,7 @@ final class MergeConfig {
 		public readonly ?int $mainSite = null,
 		public readonly array $pluginRoles = array(),
 		public readonly array $detectorExtras = array(),
+		public readonly array $divergentOptionExclusions = array(),
 	) {
 	}
 

@@ -114,7 +114,7 @@ final class TermMigrator {
 							"INSERT INTO {$destTaxonomyTable} (term_id, taxonomy, description, parent, count) VALUES (:term_id, 'category', :desc, 0, 0)",
 							array(
 								'term_id' => $destTermId,
-								'desc'    => sprintf( 'Migrated content from %s', $site->domain ),
+								'desc'    => $this->categoryDescription( $site ),
 							)
 						);
 						$destTtId = (int) $destination->lastInsertId();
@@ -278,6 +278,21 @@ final class TermMigrator {
 		$text = (string) preg_replace( '/-+/', '-', $text );
 
 		return trim( $text, '-' );
+	}
+
+	/**
+	 * The destination category's description: the site's full title
+	 * (its `blogname`) so nothing is lost even when the category name
+	 * is a short override, plus the source domain for provenance.
+	 */
+	private function categoryDescription( Site $site ): string {
+		$title = trim( $site->title );
+
+		if ( $title !== '' && $title !== $site->categoryName ) {
+			return sprintf( 'Migrated content from %s (%s)', $site->domain, $title );
+		}
+
+		return sprintf( 'Migrated content from %s', $site->domain );
 	}
 
 	/**

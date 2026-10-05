@@ -4,7 +4,7 @@
 
 - Scope: Test infrastructure for DB-bound classes; promotion of the three 2026-09-28 Future Enhancements to current work.
 - Date: 2026-10-03
-- Status counts: 0 Done, 4 Pending
+- Status counts: 3 Done (CR-402, CR-403, CR-404), 1 Pending (CR-401)
 
 ## Decisions / Constraints
 
@@ -83,7 +83,7 @@
        commentmeta chunking), `PostQueryHelperTest::fetchMetaForPosts`
        coverage.
 
-- CR-402 — Status: Pending · Priority: LOW (moved from 2026-09-28 CR-304)
+- CR-402 — Status: Done · Priority: LOW (moved from 2026-09-28 CR-304)
   - Finding: In `DivergentSiteOptionCheck`, `EXCLUDED_OPTION_NAMES` is a
     hardcoded PHP constant. As more plugins are audited across different
     multisite networks, users cannot suppress known-benign option
@@ -92,11 +92,14 @@
     specialized plugins.
   - Source refs: `src/Audit/Checks/DivergentSiteOptionCheck.php:61-113`,
     `PLAN.md` §12.5.
-  - What remains: Allow user-configured suppressions/whitelists in
-    `config/option-keys.php` or a dedicated `config/divergent-options.php`
-    that augments the built-in exclusions.
+  - Fix: Added optional `config/divergent-options.php` (sample
+    `config/divergent-options.sample.php`) returning extra option-name
+    exclusions; `ConfigLoader` loads it into
+    `MergeConfig::$divergentOptionExclusions`; the check merges them
+    with the built-in list before comparing. Covered by
+    `ConfigLoaderTest` (optional-by-default, list loading).
 
-- CR-403 — Status: Pending · Priority: LOW (moved from 2026-09-28 CR-305)
+- CR-403 — Status: Done · Priority: LOW (moved from 2026-09-28 CR-305)
   - Finding: Serialized options frequently diverge across subsites solely
     because embedded URLs differ (e.g. `http://site1.example.com` vs
     `http://site2.example.com`), while all actual plugin configuration
@@ -105,12 +108,16 @@
     configuration is otherwise uniform across subsites.
   - Source refs: `src/Audit/Checks/DivergentSiteOptionCheck.php:174-189`,
     `PLAN.md` §12.5.
-  - What remains: Normalize subsite domain URLs before comparing
-    serialized option strings. Now unblocked — `SerializedDataRewriter`
-    (CR-307 / CR-204) is implemented; use its string-rewriting walk to
-    substitute each site's home URL with a placeholder before comparison.
+  - Fix: The check now normalizes each site's own home URL (from its
+    `home`/`siteurl` option) to a `__MERGE_SITE_HOME__` placeholder
+    before grouping values. Serialized values go through
+    `SerializedDataRewriter::rewriteStrings()` so PHP string-length
+    prefixes stay correct; grouping then uses the normalized value while
+    findings display the first site's real string per group. Differences
+    that disappear after normalization are no longer reported as
+    conflicts.
 
-- CR-404 — Status: Pending · Priority: LOW (moved from 2026-09-28 CR-316)
+- CR-404 — Status: Done · Priority: LOW (moved from 2026-09-28 CR-316)
   - Finding: In `site-audit.xlsx`, multiple blocks on a post appear
     semicolon-separated in a single `blocks` cell. In spreadsheet tools
     (LibreOffice Calc, Excel), filtering on that column shows all
@@ -120,11 +127,24 @@
     complex substring filtering.
   - Source refs: `src/Report/ContentAuditReportWriter.php:450-480`,
     `config/plugin-roles.php` (`signal_map`), `PLAN.md` §12.5.
-  - What remains: Add a second worksheet tab (`block-inventory`) to
-    `ContentAuditReportWriter::toXlsx()` with columns for
-    `Block (Namespace/Name)`, `Owning Plugin`, `Plugin Slug`,
-    `Occurrences`, and `Sample URLs`. Plugin resolution driven by
-    `signal_map` in `config/plugin-roles.php`.
+  - Fix: Added a second `block-inventory` worksheet tab to
+    `ContentAuditReportWriter::toXlsx()` (always created, stable across
+    runs) with columns `Block (Namespace/Name)`, `Owning Plugin`,
+    `Plugin Slug`, `Occurrences`, and `Used On URL` -- one row per
+    distinct (block, page) pair, so filtering the URL column shows
+    every block on a page and filtering the block column shows every
+    page (URL) that uses a given block (`Occurrences` repeats the
+    block's page total).
+    Block owners resolve from `PluginUsageRollup::build()` output --
+    i.e. the `signal_map` from `config/plugin-roles.php` -- via the
+    rollup's `blocks|{label}` signals on used/not_installed entities;
+    unmapped namespaces get empty owner columns (a signal to map them).
+    Pure aggregation lives in public `blockInventory()`; `write()` passes
+    `$pluginUsage` through to `toXlsx()`. Covered by two tests in
+    `ContentAuditReportWriterTest` (per-usage rows + unmapped blocks).
+    On very large networks the tab can reach thousands of rows --
+    spreadsheet row limits (1M+) are not the binding constraint, but
+    run `--site=<blog_id>` if only one subsite's picture is needed.
 
 ## Positive Observations (N/A)
 

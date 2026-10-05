@@ -27,16 +27,18 @@ Verify everything with: `composer test && composer phpcs && composer phpstan`.
 
 `ConfigLoader` reads `config.php` (required) plus optional
 `sites.php`, `option-keys.php`, `term-overrides.php`, `shortcode-ignore.php`,
-`plugin-roles.php` and produces one `MergeConfig`. All real config files
-are gitignored; each has a `*.sample.php` committed.
+`plugin-roles.php`, `divergent-options.php` and produces one `MergeConfig`.
+All real config files are gitignored; each has a `*.sample.php` committed.
 
 - `config.php` — DB endpoints, `destination_url`, `excluded_post_types`,
   `excluded_post_statuses`, `term_merge_rule`, `main_site` (blog_id whose
   variant wins merge conflicts), `contact_page_paths`, `suppressions`
-  (finding-suppression rules), `media_search_paths`, `spreadsheet_format`,
+  (finding-suppression rules; merged with plugin-roles.php's
+  `suppressions` section), `media_search_paths`, `spreadsheet_format`,
   `wpscan_api_token`.
 - `sites.php` — per-site `include` bool + `category_name`/`category_slug`
-  overrides, keyed by blog_id.
+  overrides, keyed by blog_id. `deleted` may appear on exported entries
+  as an informational marker; it is ignored on load.
 - `option-keys.php` — per-plugin option-key patterns with migrate/exclude
   decisions (`PluginOptionRule`).
 - `shortcode-ignore.php` — shortcode tag names the audit should not report
@@ -46,8 +48,13 @@ are gitignored; each has a `*.sample.php` committed.
   `conflict_families` (`'-slug'` removes a built-in member), `signal_map`
   aliases, and `not_a_plugin` tokens; plus `detector_extras` —
   per-detector signature-table additions keyed by each detector's
-  `category()` (`seo_plugin`, `form_plugin`, `gallery`, `shortcodes`).
-  Augments the built-ins.
+  `category()` (`seo_plugin`, `form_plugin`, `gallery`, `shortcodes`);
+  plus `suppressions` — plugin-specific finding suppressions (long form,
+  or `'check' => array( slug, ... )` shorthand), merged with config.php's
+  `suppressions`. Augments the built-ins.
+- `divergent-options.php` — extra `wp_options.option_name` exclusions
+  for the `divergent-site-options` check, on top of the built-in
+  `EXCLUDED_OPTION_NAMES` list.
 
 ### DB endpoints (`src/Config/Endpoint/`)
 
@@ -59,7 +66,8 @@ lazy). Adding a provider = one new resolver class + registration.
 ## Audit pipeline (`src/Audit/`)
 
 `AuditRunner` runs each `AuditCheckInterface` check → `AuditFinding` list →
-`SuppressionFilter` applies config `suppressions` (never silently — emits an
+`SuppressionFilter` applies `suppressions` from config.php + plugin-roles.php
+(merged; never silently — emits an
 `audit.suppressed` summary finding) → `AuditReportWriter` renders Markdown +
 JSON.
 
@@ -168,7 +176,8 @@ security, backups, page builders).
   URL for attachments.
 - `TermMergeResolver` + `TermMergeGroup` — pure, DB-free case-collision
   merge decisions (shared by the audit check and the future TermMigrator).
-- `SitesPhpExporter` — Site list → paste-ready `sites.php` source.
+- `SitesPhpExporter` — Site list → paste-ready `sites.php` source
+  (deleted sites included, marked `include=false` + `deleted=true`).
 - `Destination/AdminIdRenumberer` — SQL to move the admin off user ID 1.
 - `TemplateInventory` — wp_template/wp_template_part rows per site, each
   with its `wp_theme` term (active stylesheet, stale theme, or

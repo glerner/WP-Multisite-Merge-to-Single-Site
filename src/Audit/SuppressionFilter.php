@@ -5,7 +5,8 @@ declare(strict_types=1);
 namespace MergeMultisite\Audit;
 
 /**
- * Applies the "suppressions" rules from config.php to a collected set
+ * Applies the "suppressions" rules (merged from config.php and the
+ * 'suppressions' section of plugin-roles.php) to a collected set
  * of findings, so known-benign or already-decided findings don't flood
  * the report. Suppression is never silent: when at least one finding is
  * suppressed, a single summary finding ("audit.suppressed") is appended

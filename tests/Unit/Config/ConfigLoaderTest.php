@@ -74,6 +74,74 @@ final class ConfigLoaderTest extends TestCase {
 		self::assertFalse( $site->include );
 	}
 
+	/**
+	 * Divergent-options.php is optional (like every config file except
+	 * config.php). When absent the check must behave exactly as before
+	 * this feature existed -- an empty exclusion list -- so the default
+	 * is asserted here rather than assumed.
+	 */
+	public function testDivergentOptionsPhpIsOptionalAndDefaultsToEmpty(): void {
+		$this->writeConfigPhp();
+
+		$config = ( new ConfigLoader( $this->tempDir ) )->load();
+
+		self::assertSame( array(), $config->divergentOptionExclusions );
+	}
+
+	public function testDivergentOptionsPhpExclusionsAreLoadedAsStringList(): void {
+		$this->writeConfigPhp();
+
+		file_put_contents(
+			$this->tempDir . '/divergent-options.php',
+			"<?php return ['my-plugin-setting', 'another-key'];"
+		);
+
+		$config = ( new ConfigLoader( $this->tempDir ) )->load();
+
+		self::assertSame( array( 'my-plugin-setting', 'another-key' ), $config->divergentOptionExclusions );
+	}
+
+	/**
+	 * Plugin-roles.php 'suppressions' merges with config.php rules (both
+	 * apply), and the 'check-name' => array(slug, ...) shorthand expands
+	 * to one rule per slug with context 'plugin'.
+	 */
+	public function testPluginRolesSuppressionsMergeAndExpandShorthand(): void {
+		$this->writeConfigPhp();
+		file_put_contents(
+			$this->tempDir . '/plugin-roles.php',
+			<<<'PHP'
+<?php
+return array(
+	'suppressions' => array(
+		'plugin-data.no-rule' => array( 'ai-engine', 'flamingo' ),
+		array( 'check' => 'media-files.missing-file', 'blog_id' => 26 ),
+	),
+);
+PHP
+		);
+
+		$config = ( new ConfigLoader( $this->tempDir ) )->load();
+
+		self::assertSame(
+			array(
+			array(
+				'check'  => 'plugin-data.no-rule',
+				'plugin' => 'ai-engine',
+			),
+			array(
+				'check'  => 'plugin-data.no-rule',
+				'plugin' => 'flamingo',
+			),
+			array(
+				'check'   => 'media-files.missing-file',
+				'blog_id' => 26,
+			),
+			),
+			$config->suppressions
+		);
+	}
+
 	private function writeConfigPhp(): void {
 		file_put_contents(
 			$this->tempDir . '/config.php',
