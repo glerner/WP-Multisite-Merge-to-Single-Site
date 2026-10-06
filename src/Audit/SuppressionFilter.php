@@ -54,7 +54,7 @@ final class SuppressionFilter {
 			$kept[] = AuditFinding::info(
 				'audit.suppressed',
 				sprintf(
-					'%d finding(s) hidden by "suppressions" rules in config.php; to review them, temporarily remove the matching rules.',
+					'%d finding(s) hidden by "suppressions" rules (config.php / plugin-roles.php); to review them, temporarily remove the matching rules.',
 					$suppressed
 				),
 				array( 'suppressed_count' => $suppressed )

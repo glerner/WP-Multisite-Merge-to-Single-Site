@@ -22,7 +22,8 @@ use MergeMultisite\Support\FileHasher;
  *  - Same filename, identical content ("informational"): will safely
  *    dedup to a single physical file.
  *  - Identical content, different filenames ("informational"): duplicate
- *    Media Library uploads; not auto-merged, low priority cleanup.
+ *    Media Library uploads; not auto-merged (each copy may carry
+ *    different alt text, captions, and usage), low priority cleanup.
  *
  * @package MergeMultisite
  */
@@ -219,7 +220,7 @@ final class MediaFileCheck implements AuditCheckInterface {
 			$findings[] = AuditFinding::info(
 				$this->name() . '.duplicate-content-different-name',
 				sprintf(
-					'Identical content under %d filenames (%s) -- duplicate uploads; not auto-merged.',
+					'Identical content under %d filenames (%s) -- duplicate uploads; not auto-merged (each copy may carry different alt text/captions/usage).',
 					count( $distinctNames ),
 					implode( ', ', $distinctNames )
 				),

@@ -12,9 +12,11 @@ use MergeMultisite\Support\FileHasher;
  * postmeta row joined to its attachment post, resolved to an absolute
  * path on disk via `UploadsPathResolver`.
  *
- * Shared by MediaFileCheck (which reports missing files and basename
- * collisions) and MediaMigrator (PLAN.md §7.2 — which copies/dedupes
- * the files and recreates attachment posts on the destination).
+ * Used by MediaFileCheck (which reports missing files and basename
+ * collisions) and by the content audit. MediaMigrator fetches its own
+ * attachment post rows + postmeta (it needs to recreate the posts on
+ * the destination), but resolves source paths through the same
+ * UploadsPathResolver.
  *
  * @package MergeMultisite
  */

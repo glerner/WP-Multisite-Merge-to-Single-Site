@@ -78,18 +78,40 @@ final class OrphanedMediaFileCheck implements AuditCheckInterface {
 				continue;
 			}
 
-			$examples = array_slice( $orphaned, 0, self::MAX_EXAMPLES_PER_SITE );
-			$summary = implode( ', ', $examples );
-			if ( count( $orphaned ) > self::MAX_EXAMPLES_PER_SITE ) {
-				$summary .= sprintf( ' (and %d more)', count( $orphaned ) - self::MAX_EXAMPLES_PER_SITE );
+			// Generated image sizes (name-{W}x{H}.ext, and the legacy
+			// name.thumbnail.ext / .medium / .large patterns) never have
+			// their own attachment record and are regenerable whenever
+			// the original file is still on disk -- keeping them out of
+			// the example list keeps the readable part of the report
+			// focused on real orphans. They remain in the JSON context.
+			$display = array();
+			$generatedCount = 0;
+			foreach ( $orphaned as $relative ) {
+				$original = self::originalPathForGeneratedSize( $relative );
+				if ( $original !== null && in_array( $original, $onDisk, true ) ) {
+					$generatedCount++;
+					continue;
+				}
+				$display[] = $relative;
+			}
+
+			$examples = array_slice( $display, 0, self::MAX_EXAMPLES_PER_SITE );
+			$summary = $display === array()
+				? 'all are generated-size files'
+				: implode( ', ', $examples );
+			if ( count( $display ) > self::MAX_EXAMPLES_PER_SITE ) {
+				$summary .= sprintf( ' (and %d more)', count( $display ) - self::MAX_EXAMPLES_PER_SITE );
 			}
 
 			$findings[] = AuditFinding::info(
 				$this->name(),
 				sprintf(
-					'Site %d: %d file(s) with no attachment record: %s. Full list in JSON.',
+					'Site %d: %d file(s) with no attachment record%s: %s. Full list in JSON.',
 					$site->blogId,
 					count( $orphaned ),
+					$generatedCount > 0
+						? sprintf( ' (%d generated-size file(s) omitted -- regenerable from an original on disk)', $generatedCount )
+						: '',
 					$summary
 				),
 				array(
@@ -151,6 +173,26 @@ final class OrphanedMediaFileCheck implements AuditCheckInterface {
 		}
 
 		return array_values( array_unique( $referenced ) );
+	}
+
+	/**
+	 * If a path LOOKS like a WordPress generated image size, return the
+	 * path of the original file it would have been generated from:
+	 * "2024/12/photo-150x150.png" -> "2024/12/photo.png" (modern
+	 * name-{W}x{H}.ext sizes), and "2024/12/photo.thumbnail.png" ->
+	 * "2024/12/photo.png" (the legacy pre-3.5 size-naming scheme).
+	 * Returns null for anything else.
+	 */
+	private static function originalPathForGeneratedSize( string $relative ): ?string {
+		if ( preg_match( '/^(.+)-\d+x\d+(\.[^.\/]+)$/', $relative, $matches ) ) {
+			return $matches[1] . $matches[2];
+		}
+
+		if ( preg_match( '/^(.+)\.(?:thumbnail|medium|large)(\.[^.\/]+)$/i', $relative, $matches ) ) {
+			return $matches[1] . $matches[2];
+		}
+
+		return null;
 	}
 
 	/**

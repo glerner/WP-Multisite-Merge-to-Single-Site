@@ -70,6 +70,12 @@ final class Connection {
 	/**
 	 * Build an error message that names the failing config section and
 	 * lists the most likely fixes, instead of a bare PDO stack trace.
+	 *
+	 * MySQL driver error 2002/2003 (connection refused / can't connect,
+	 * including a missing unix socket file) means the host and port are
+	 * reachable but nothing is listening -- the settings are correct and
+	 * the database server simply isn't running, so that case gets its
+	 * "start the environment" hint BEFORE the config-review items.
 	 */
 	private function connectionFailureMessage( PDOException $exception ): string {
 		$label = $this->config->label;
@@ -77,11 +83,29 @@ final class Connection {
 			? sprintf( 'socket %s, schema "%s"', $this->config->socket, $this->config->database )
 			: sprintf( '%s@%s:%d, schema "%s"', $this->config->username, $this->config->host, $this->config->port, $this->config->database );
 
+		$driverCode = isset( $exception->errorInfo[1] ) ? (int) $exception->errorInfo[1] : 0;
+		$serverDown = '';
+		if ( in_array( $driverCode, array( 2002, 2003 ), true ) ) {
+			$serverDown = <<<'EOT'
+  - Connection refused: the host and port answered but no MySQL server
+    is listening, so your settings are likely correct and the database
+    just isn't running. Start it first:
+      Lando:               run `lando start` in that site's own folder
+                           (e.g. your destination site's folder)
+      Local by Flywheel:   start the site in the Local app
+      WordPress Studio:    start the site in the Studio app
+      Docker:              `docker compose up -d` in the project folder
+      System MySQL:        `sudo systemctl start mysql` (or mariadb)
+
+EOT;
+		}
+
 		return <<<EOT
 Could not connect to the database configured under "{$label}" ({$target}).
 PDO error: {$exception->getMessage()}
 
 Troubleshooting:
+{$serverDown}
   - If this database runs under Lando: the host port is reassigned each
     time the container is recreated. Set "connection" => ["driver" =>
     "lando"] under "{$label}" in config/config.php to resolve it

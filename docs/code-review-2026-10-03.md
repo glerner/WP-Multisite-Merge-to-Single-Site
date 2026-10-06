@@ -4,7 +4,8 @@
 
 - Scope: Test infrastructure for DB-bound classes; promotion of the three 2026-09-28 Future Enhancements to current work.
 - Date: 2026-10-03
-- Status counts: 3 Done (CR-402, CR-403, CR-404), 1 Pending (CR-401)
+- Status counts: 3 Done (CR-402, CR-403, CR-404), 1 Pending (CR-401),
+  2 Future ideas (CR-405, CR-406)
 
 ## Decisions / Constraints
 
@@ -81,7 +82,11 @@
        (menus + `_menu_item_*` meta + `nav_menu` taxonomy join),
        `CommentQueryHelperTest` (keyset batching boundaries,
        commentmeta chunking), `PostQueryHelperTest::fetchMetaForPosts`
-       coverage.
+       coverage. Phase 4's `MediaMigrator` (2026-10-05) adds its
+       end-to-end DB + filesystem paths here too — its pure planning
+       (`planTargets`, `rewriteAttachmentMetadata`, `variantBasenames`,
+       `collisionAlternatives`) is already unit-tested; the insert/copy
+       execution paths are the first integration-test candidates.
 
 - CR-402 — Status: Done · Priority: LOW (moved from 2026-09-28 CR-304)
   - Finding: In `DivergentSiteOptionCheck`, `EXCLUDED_OPTION_NAMES` is a
@@ -145,6 +150,56 @@
     On very large networks the tab can reach thousands of rows --
     spreadsheet row limits (1M+) are not the binding constraint, but
     run `--site=<blog_id>` if only one subsite's picture is needed.
+
+## Future Ideas
+
+- CR-405 — Status: Future idea · Priority: LOW
+  - Idea: Enrich `media-files.duplicate-content-different-name`
+    findings with the metadata that makes manual dedupe decisions
+    possible: each duplicate file's alt text, caption, and the pages
+    that actually display it. A "George0085-crop300.png vs
+    George0085-crop3001.png" row is only actionable once you can see
+    which copy carries real alt text and which posts reference each.
+  - Feasibility (checked 2026-10-05, no code written): the pieces
+    mostly exist. `MediaInventory::collect()` already returns
+    `post_id` for every found file (the finding just doesn't emit it);
+    alt text is `_wp_attachment_image_alt` postmeta and caption is the
+    attachment post's `post_excerpt`, both fetchable via the existing
+    `PostQueryHelper::fetchMetaForPosts()` chunked-meta helper. The
+    genuinely new query is "which posts display this attachment":
+    `_thumbnail_id` postmeta (featured images) plus `post_content`
+    LIKE scans for the image URL, the `wp-image-{id}` class, and
+    `[gallery ids=...]`/`wp:{"id":N}` references. Bounded to the
+    duplicate groups only, so the cost stays small; alternatively the
+    site-audit content-scan pipeline already walks every post's
+    content and could cross-reference.
+
+- CR-406 — Status: Future idea · Priority: LOW
+  - Idea: Run `bin/site-audit.php` against a plain single-site
+    WordPress install — i.e. repackage the audit as a standalone
+    "WP Site Audit" product, differing mainly in docs and config
+    shape rather than code.
+  - Feasibility (checked 2026-10-05, no code written): the scan
+    engine is already single-site-safe. `siteTable( 'posts', 1 )`
+    yields `wp_posts` — the same table name a single install uses —
+    and `UploadsPathResolver` resolves blogId 1 to the bare uploads
+    path, so every per-site query and path lookup works unchanged if
+    fed one synthetic `Site{blogId:1}`. What breaks is confined to the
+    multisite plumbing: `SiteSelector` queries `wp_blogs` (absent on
+    single-site) and `PluginInventory::networkActiveSlugs()` reads
+    `wp_sitemeta` (also absent). `Connection::tableExists()` already
+    exists, so detection is cheap.
+  - What a "WP Site Audit" re-packaging needs: (a) a synthetic-site
+    substitute for `SiteSelector` — detect a missing `wp_blogs` table
+    and fabricate `Site{1}` from the `siteurl`/`home` options; (b)
+    skip `networkActiveSlugs()` when `wp_sitemeta` is absent
+    (single-site has no network-active plugins); (c) relax config
+    requirements for audit-only runs — `sites.php` and the
+    `destination` DB section are meaningless there (destination_url
+    only feeds the needs-review "guessed URL" column, so it can be
+    optional); (d) documentation: a standalone README that drops the
+    merge/multisite framing. The detectors, report writers (CSV /
+    JSON / XLSX / summary), and needs-review pipeline need no changes.
 
 ## Positive Observations (N/A)
 

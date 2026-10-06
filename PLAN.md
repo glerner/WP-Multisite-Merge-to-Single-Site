@@ -828,11 +828,16 @@ blocking issues are found; `--strict` flag to also fail on warnings.
    on the current real data, all categorized and actionable.
 3. **Phase 2** — `site-audit.php` (independent of the migration
    pipeline; also safe to run immediately, and useful on its own for
-   your plugin-consolidation decisions). Built; hardening/report polish
-   is the natural next candidate before Phase 3+.
+   your plugin-consolidation decisions). ✅ Done — built and hardened
+   through the 2026-10-03 review (CR-402/403/404: divergent-option
+   config, URL normalization, block-inventory + needs-review XLSX tabs).
 4. **Phase 3** — Users + Terms migrators (+ term-merge report). ✅ Built (UserMigrator and TermMigrator implemented with IdMap/MigrationTable integration and unit tests).
 5. **Phase 4** — Media migrator (filesystem copy/dedup/rename,
-   `--move-media-only`).
+   `--move-media-only`). ✅ Implemented: `MediaMigrator` +
+   `bin/migrate.php` (users → terms → media, `--dry-run`,
+   `--move-media-only`, `--site=`, resume via the migration-map table).
+   Pure planning logic unit-tested; DB-bound paths await CR-401
+   (SQLite-backed test harness).
 6. **Phase 5** — Posts/pages/CPTs + postmeta + parent-fixups + contact
    page canonicalization.
 7. **Phase 6** — Comments.
@@ -882,11 +887,10 @@ these are scheduled work:
   a future enhancement is a per-page review checklist (original site +
   page, destination page, plugins most likely needing checking on that
   page, and the raw data we have about each).
-- **Configurable suppressions / whitelists for divergent options.** Move
-  or augment `DivergentSiteOptionCheck::EXCLUDED_OPTION_NAMES` via a
-  configuration file (like `config/option-keys.php` or `config/divergent-options.php`),
-  enabling user suppression of known-benign plugin option differences without
-  altering core PHP source code.
+- ~~**Configurable suppressions / whitelists for divergent options.**~~
+  ✅ Implemented 2026-10-03: optional `config/divergent-options.php`
+  augments `EXCLUDED_OPTION_NAMES` (see code-review-2026-10-03.md
+  CR-402).
 - **Selective scanning of non-autoloaded options in audit.** `DivergentSiteOptionCheck`
   scans only `autoload = 'yes'` rows to prevent loading megabytes of transient
   cache blobs and session logs into memory. An enhancement would allow users to
@@ -894,20 +898,16 @@ these are scheduled work:
   differences without opening the door to memory exhaustion. (Note: this is an
   audit-only enhancement; `OptionsMigrator` in §7.5 already migrates configured
   plugin options regardless of their autoload flag).
-- **Domain URL normalization in serialized option comparisons.** Many serialized
-  options diverge across subsites solely because an embedded subsite URL
-  (`http://siteA.example.com` vs `http://siteB.example.com`) differs, even though
-  all plugin settings and toggles are identical. Once `SerializedDataRewriter`
-  is implemented, normalizing subsite URLs to a common token before string
-  comparison will eliminate false-positive divergence warnings.
-- **Dedicated "Block Inventory" tab in `site-audit.xlsx`.** In the main post-by-post
-  audit sheet, a post's `blocks` column contains all blocks found as a semicolon-separated
-  string, making Calc/Excel AutoFilter show every multi-block permutation instead of
-  individual unique blocks. Adding a second worksheet tab (`blocks`) with columns for
-  `Block Namespace/Name`, `Owning Plugin`, `Plugin Slug`, `Total Occurrences`, and
-  `Sample Pages Found On` lets users filter and review individual block types cleanly
-  without combinatorial noise. Plug-in mappings are driven by `config/plugin-roles.php`
-  `signal_map`.
+- ~~**Domain URL normalization in serialized option comparisons.**~~
+  ✅ Implemented 2026-10-03: `DivergentSiteOptionCheck` normalizes each
+  site's home URL to a placeholder before grouping (via
+  `SerializedDataRewriter::rewriteStrings()`), eliminating
+  domain-only false positives (see code-review-2026-10-03.md CR-403).
+- ~~**Dedicated "Block Inventory" tab in `site-audit.xlsx`.**~~
+  ✅ Implemented 2026-10-03 — and better than this note's "sample URLs"
+  design: one row per (block, page) pair in a `block-inventory` tab, so
+  the Block and Used-On-URL columns both filter cleanly (see
+  code-review-2026-10-03.md CR-404).
 
 ## 13. Remaining open items
 
@@ -943,5 +943,6 @@ default I'll build if you don't weigh in further:
 
 ---
 
-**Next step:** Phase 3 (Users + Terms migrators) — the read-only audit
-tooling (Phases 0–2) is built and verified against the real source DB.
+**Next step:** Phase 5 (Posts/pages/CPTs + postmeta + parent-fixups +
+contact page canonicalization) — Phases 0–4 are built and verified
+against the real source DB.

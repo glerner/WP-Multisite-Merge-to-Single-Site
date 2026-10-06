@@ -135,13 +135,13 @@ final class AuditReportWriter {
 			'| **media-files** | Inspect files via `var/reports/copy-missing-media-*.sh` or source `wp-content/uploads/` | Auto-handled: collisions are renamed to `{basename}_site{id}` during migration |',
 			'| **term-case-collisions** | Subsite wp-admin → Posts → Categories/Tags: align case variants | Override canonical label via `taxonomy => [\'old\' => \'Canonical\']` in `config/term-overrides.php` |',
 			'| **template-slug-collision** | Subsite wp-admin → Site Editor → Templates: review colliding template slugs | Set `\'main_site\' => <blog_id>` in `config/config.php` to choose the winning template |',
-			'| **plugin-data** | Inspect options in database or installed plugins in `wp-content/plugins/` | Add `mode => \'include\'` or `mode => \'exclude\'` for the slug in `config/option-keys.php` |',
+			'| **plugin-data** | Inspect options in database or installed plugins in `wp-content/plugins/` | Add `mode => \'include\'` or `mode => \'exclude\'` for the slug in `config/option-keys.php`; hide a whole check via `suppressions` in `config/plugin-roles.php` |',
 			'| **pods-detection** | Advisory check: inspect if Pods custom tables contain real content | Advisory check only; no action needed unless custom content types require migration |',
 			'| **menu-widget-integrity** | Subsite wp-admin → Appearance → Menus / Widgets: remove broken links or rebuild widget | Fix broken menu targets in wp-admin or rebuild corrupted widget instances |',
 			'| **contact-page-discovery** | Advisory preview of contact page URLs that will canonicalize to `/contact/` | Advisory for 301 redirect map generation in `PLAN.md` §7.1 |',
 			'| **malware-indicators** | Subsite wp-admin → edit post and remove injected spam keywords | Add `[\'check\' => \'malware-indicators.spam-keyword\', \'post_id\' => ...]` in `suppressions` of `config/config.php` |',
 			'| **orphaned-media-files** | Run generated `var/reports/copy-missing-media-*.sh` to copy files from search paths | Restore files or delete broken attachment posts in subsite Media Library |',
-			'| **divergent-site-options** | Subsite wp-admin → Settings: harmonize differing options across subsites | Informational decision guide: merged single site keeps one canonical value per option |',
+			'| **divergent-site-options** | Subsite wp-admin → Settings: harmonize differing options across subsites; full option/value/site list in the "divergent-options" tab of `var/reports/integrity-*.xlsx` | Exclude expected-divergent option names via `config/divergent-options.php` |',
 			'',
 		);
 	}

@@ -98,6 +98,14 @@ Pre-flight connection verification: connects to both the source multisite and de
 php bin/test-connections.php
 ```
 
+**Connection refused?** `SQLSTATE[HY000] [2002]` / `[2003]` means the
+host and port answered but no MySQL server is listening — your settings
+are correct; the database server simply isn't running. Start the site's
+environment first (`lando start` in that site's own folder, start the
+site in Local/Studio, `docker compose up -d`, or
+`sudo systemctl start mysql`), then re-run. The error output prints the
+same hints plus the config-review steps for other failures.
+
 ### `bin/multisite-integrity-checker.php`
 
 Read-only pre-flight audit of the source multisite: orphaned post
@@ -135,7 +143,7 @@ description, and `'category_slug'` is derived from the name unless you
 set it. Re-running `--list-sites-php` is safe -- it keeps the
 include/category overrides already in the file.
 
-Reports are written to `var/reports/integrity-*.md`, and to `var/reports/integrity-*.json` (same information, 2 formats).
+Reports are written to `var/reports/integrity-*.md`, and to `var/reports/integrity-*.json` (same information, 2 formats). When the divergent-site-options section is truncated (more than 50 divergent options), the complete uncapped list — every option, every distinct value, and the sites holding each — is written to a `divergent-options` tab in `var/reports/integrity-*.xlsx` (or a same-named `.csv` when ext-zip is missing), so you can sort/filter the whole list in a spreadsheet.
 
 ### `bin/site-audit.php`
 
@@ -271,11 +279,41 @@ php bin/harden-admin-id.php
 php bin/harden-admin-id.php --new-id=42
 ```
 
-### `bin/migrate.php` (in progress)
+### `bin/migrate.php` (Phases 3–4 implemented)
 
-The actual migration. See `PLAN.md` for the full design (ID remapping,
-media dedup, term merging, URL rewriting, redirect maps, etc.). Not yet
-implemented.
+The migration itself. Runs the implemented phases in dependency order
+(PLAN.md §5): **Users** → **Terms** → **Media** (files + attachment
+posts). Phases 5–8 (posts, comments, menus/widgets, URL rewriting) are
+not built yet and will be appended here as they land.
+
+```bash
+php bin/migrate.php --dry-run                      # plan the whole run
+php bin/migrate.php --move-media-only --dry-run    # plan media only
+php bin/migrate.php --move-media-only              # media first (PLAN.md §7.2)
+php bin/migrate.php                                # real run, all built phases
+```
+
+- `--dry-run` — resolves every destination path and ID, logs every
+  planned write and file copy, but writes nothing to the destination
+  database and copies no files. The JSON run report
+  (`var/reports/migrate-*-dryrun.json`) shows exactly what a real run
+  would do, so review it first.
+- `--move-media-only` — runs just the media phase: copies files with
+  size + SHA-256 dedup (identical files collapse to one physical file,
+  and files already on the destination are reused), renames same-name
+  different-content collisions to `{basename}_site{blog_id}.{ext}`
+  (thumbnail sizes keep `-{W}x{H}` last, e.g. `logo_site7-150x150.png`),
+  and recreates `attachment` posts with `_wp_attached_file` and
+  `_wp_attachment_metadata` rewritten to the destination paths.
+- `--site=<blog_id>` — restrict to one subsite; handy for very large
+  networks (run one site at a time).
+- **Idempotent / resumable** — every migrated row's origin is recorded
+  in the destination's `{prefix}merge_migration_map` table, so
+  re-running (or resuming after an interruption) skips already-migrated
+  rows instead of double-inserting. No separate `--resume` flag.
+- Run reports land in `var/reports/migrate-*.json`, logs in
+  `var/logs/migrate-*.log`, and the in-memory ID map is snapshotted to
+  `var/state/idmap-*.json` after a real run.
 
 ## Development
 

@@ -104,14 +104,14 @@ final class PluginDataCheck implements AuditCheckInterface {
 
 			if ( $rule === null ) {
 				$undecided[ $slug ] = $footprintDetector->detect( $source, $config, $slug, $installedSites );
+				// Markdown report: bold the sites where the plugin is
+				// active so they stand out from merely-installed ones.
 				$siteSummary = implode(
 					', ',
 					array_map(
-						static fn ( int $blogId ): string => sprintf(
-							'%d%s',
-							$blogId,
-							in_array( $blogId, $activeSites, true ) ? ' (active)' : ''
-						),
+						static fn ( int $blogId ): string => in_array( $blogId, $activeSites, true )
+							? sprintf( '**%d** (active)', $blogId )
+							: (string) $blogId,
 						$installedSites
 					)
 				);
@@ -136,7 +136,7 @@ final class PluginDataCheck implements AuditCheckInterface {
 				$findings[] = AuditFinding::warning(
 					$this->name() . '.needs-adapter',
 					sprintf(
-						"Plugin \"%s\" on site(s) %s -- needs_adapter (%s); its data can't migrate until an adapter is built. To hide: ['check' => 'plugin-data.needs-adapter', 'plugin' => '%s']",
+						"Plugin \"%s\" on site(s) %s -- needs_adapter (%s); its data can't migrate until an adapter is built. To hide: array( 'check' => 'plugin-data.needs-adapter', 'plugin' => '%s' )",
 						$slug,
 						implode( ', ', $installedSites ),
 						$rule->reason ?? '',
@@ -172,17 +172,20 @@ final class PluginDataCheck implements AuditCheckInterface {
 	private function undecidedPluginsFinding( array $undecided, PluginFootprintDetector $footprintDetector ): AuditFinding {
 		$include = array();
 		$elsewhere = array();
+		$nothingFound = array();
 		$exclude = array();
 		$suppress = array();
 
 		foreach ( $undecided as $slug => $footprint ) {
+			// All paste-ready blocks use long array() syntax so they
+			// pass the same PHPCS ruleset as the real config files.
 			if ( $footprint['options'] !== array() ) {
 				$keys = $footprintDetector->suggestedOptionKeys( $footprint['options'] );
 				$sample = array_slice( $footprint['options'], 0, 3 );
 				$include[] = sprintf(
-					"    '%s' => ['mode' => 'include', 'option_keys' => %s],  // found: %s%s",
+					"        '%s' => array(\n            'mode'        => 'include',\n            'option_keys' => array( '%s' ),\n        ),  // found: %s%s",
 					$slug,
-					"['" . implode( "', '", $keys ) . "']",
+					implode( "', '", $keys ),
 					implode( ', ', $sample ),
 					count( $footprint['options'] ) > 3
 						? sprintf( ' (+%d more)', count( $footprint['options'] ) - 3 )
@@ -205,15 +208,15 @@ final class PluginDataCheck implements AuditCheckInterface {
 				if ( $footprint['tables'] !== array() ) {
 					$parts[] = sprintf( 'tables: %s', implode( ', ', $footprint['tables'] ) );
 				}
-				$elsewhere[] = sprintf(
-					'    %s: %s',
-					$slug,
-					$parts === array() ? 'nothing found in wp_options, posts, postmeta, or custom tables' : implode( ' | ', $parts )
-				);
+				if ( $parts === array() ) {
+					$nothingFound[] = $slug;
+				} else {
+					$elsewhere[] = sprintf( '    %s: %s', $slug, implode( ' | ', $parts ) );
+				}
 			}
 
-			$exclude[]  = sprintf( "    '%s' => ['mode' => 'exclude'],", $slug );
-			$suppress[] = sprintf( "    ['check' => 'plugin-data.no-rule', 'plugin' => '%s'],", $slug );
+			$exclude[]  = sprintf( "    '%s' => array( 'mode' => 'exclude' ),", $slug );
+			$suppress[] = sprintf( "    array( 'check' => 'plugin-data.no-rule', 'plugin' => '%s' ),", $slug );
 		}
 
 		$message = sprintf(
@@ -221,17 +224,23 @@ final class PluginDataCheck implements AuditCheckInterface {
 			count( $undecided )
 		);
 		if ( $include !== array() ) {
-			$message .= "\n  To keep a plugin's wp_options data, paste its 'include' line into config/option-keys.php"
+			$message .= "\n  **To keep a plugin's wp_options data, paste its entry into config/option-keys.php**"
 				. "\n  (option prefixes detected from its sites; verify before keeping):"
 				. "\n" . implode( "\n", $include );
 		}
-		if ( $elsewhere !== array() ) {
-			$message .= "\n  No wp_options rows detected -- where the plugin's data actually lives:"
-				. "\n" . implode( "\n", $elsewhere );
+		if ( $elsewhere !== array() || $nothingFound !== array() ) {
+			$message .= "\n  **No wp_options rows detected -- where the plugin's data actually lives:**";
+			if ( $nothingFound !== array() ) {
+				$message .= "\n    Nothing found in wp_options, posts, postmeta, or custom tables: "
+					. implode( ', ', $nothingFound );
+			}
+			if ( $elsewhere !== array() ) {
+				$message .= "\n" . implode( "\n", $elsewhere );
+			}
 		}
-		$message .= "\n  To never migrate it, paste its line into config/option-keys.php:"
+		$message .= "\n  **To never migrate a plugin, paste its entry into config/option-keys.php:**"
 			. "\n" . implode( "\n", $exclude )
-			. "\n  To hide it without deciding, paste into 'suppressions' in config.php:"
+			. "\n  **To hide a plugin without deciding, paste its entry into 'suppressions' in plugin-roles.php:**"
 			. "\n" . implode( "\n", $suppress );
 
 		return AuditFinding::info(
@@ -338,13 +347,13 @@ final class PluginDataCheck implements AuditCheckInterface {
 
 		return AuditFinding::info(
 			$this->name() . '.orphaned-data',
-			"wp_options data exists for plugins NOT INSTALLED on that site (likely leftover from removed plugins).\n"
-			. "  These plugins already have option-keys.php rules. To keep the data, leave the rule as 'include';\n"
-			. "  to never migrate it, change its 'mode' to 'exclude' there and this row stops appearing.\n"
-			. "  (To hide the whole table without deciding, add to 'suppressions' in config.php:\n"
-			. "  ['check' => 'plugin-data.orphaned-data'] -- this is one aggregated finding covering\n"
-			. "  all patterns, so there is no per-row suppression; use the plugin's 'exclude' mode\n"
-			. "  for per-plugin control.)\n"
+			"Option rows exist for plugins NOT INSTALLED on that site (leftover from removed plugins).\n"
+			. "  These plugins already have option-keys.php rules: leave 'mode' => 'include' to keep\n"
+			. "  the data, or change it to 'exclude' and the row stops appearing. To hide the whole\n"
+			. "  table without deciding: array( 'check' => 'plugin-data.orphaned-data' ) in 'suppressions'\n"
+			. "  (config.php or plugin-roles.php) -- this is one aggregated finding covering all\n"
+			. "  patterns, so there is no per-row suppression; use the plugin's 'exclude' mode\n"
+			. "  for per-plugin control.\n"
 			. "\n"
 			. implode( "\n", $table ),
 			array( 'rows' => $rows )

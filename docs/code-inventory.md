@@ -15,13 +15,14 @@ Verify everything with: `composer test && composer phpcs && composer phpstan`.
 
 ## Entry points (`bin/`)
 
-| File | Purpose |
-|---|---|
-| `bin/site-audit.php` | Content/plugin-usage audit: scans posts across included sites, reports blocks/shortcodes/plugin footprints per page. Options: `--site=<id>`, `--all-sites`, `--post-types=…`, `--search=…`, `--config=<dir>`. Writes CSV + JSON + summary.md + XLSX to `var/reports/`, plus a needs-review CSV. |
-| `bin/multisite-integrity-checker.php` | Read-only pre-flight audit: runs every `AuditCheckInterface` check. `--strict`, `--list-sites`, `--config=`. Writes Markdown + JSON to `var/reports/` and a media-recovery script to `var/`. |
-| `bin/harden-admin-id.php` | Renumbers destination admin user away from ID 1 (run once, before migration; see `AdminIdRenumberer`). |
-| `bin/test-connections.php` | Pre-flight connection test: verifies both source and destination databases and uploads directories simultaneously in one PHP process. |
-| `bin/run-wpscan.php` | Optional wrapper around external `wpscan` CLI (Ruby gem) for vulnerability checks against a live URL. |
+| File                                  | Purpose                                                                                                                                                                                                                                                                                         |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bin/migrate.php`                     | Migration entry point: runs the implemented phases in dependency order (users → terms → media). `--dry-run`, `--move-media-only`, `--site=`, `--config=`. Writes run reports to `var/reports/`, logs to `var/logs/`, ID-map snapshots to `var/state/`.                                          |
+| `bin/site-audit.php`                  | Content/plugin-usage audit: scans posts across included sites, reports blocks/shortcodes/plugin footprints per page. Options: `--site=<id>`, `--all-sites`, `--post-types=…`, `--search=…`, `--config=<dir>`. Writes CSV + JSON + summary.md + XLSX to `var/reports/`, plus a needs-review CSV. |
+| `bin/multisite-integrity-checker.php` | Read-only pre-flight audit: runs every `AuditCheckInterface` check. `--strict`, `--list-sites`, `--config=`. Writes Markdown + JSON to `var/reports/` and a media-recovery script to `var/`.                                                                                                    |
+| `bin/harden-admin-id.php`             | Renumbers destination admin user away from ID 1 (run once, before migration; see `AdminIdRenumberer`).                                                                                                                                                                                          |
+| `bin/test-connections.php`            | Pre-flight connection test: verifies both source and destination databases and uploads directories simultaneously in one PHP process.                                                                                                                                                           |
+| `bin/run-wpscan.php`                  | Optional wrapper around external `wpscan` CLI (Ruby gem) for vulnerability checks against a live URL.                                                                                                                                                                                           |
 
 ## Configuration (`config/`)
 
@@ -78,7 +79,10 @@ collisions), `OrphanedMediaFileCheck` (files with no attachment post),
 probing to `PluginFootprintDetector`), `MenuWidgetIntegrityCheck`,
 `UserConflictCheck`, `TermCaseCollisionCheck` (previews `TermMergeResolver`),
 `TemplateSlugCollisionCheck` (same-slug wp_template/wp_template_part across
-sites; `main_site` wins), `DivergentSiteOptionCheck`,
+sites; `main_site` wins), `DivergentSiteOptionCheck` (autoloaded options that
+differ across sites; Markdown shows 50, the uncapped option/value/site map
+rides the `.truncated` finding's context into the `divergent-options` tab of
+`integrity-*.xlsx`),
 `ContactPageDiscoveryCheck`, `PodsDetectionCheck`,
 `MalwareIndicatorCheck` (backed by pure `MalwareHeuristics`).
 
@@ -148,11 +152,18 @@ security, backups, page builders).
   (`uploads/sites/{id}/`) and legacy `blogs.dir` layouts.
 - `MediaInventory` — per-site attachment collection: `_wp_attached_file`
   rows → `{found, missing}` with resolved disk paths, plus once-per-file
-  fingerprinting (shared by `MediaFileCheck` and `MediaMigrator`).
+  fingerprinting (used by `MediaFileCheck`; `MediaMigrator` fetches its
+  own post rows + meta so it can recreate the posts).
 - `MediaCollisionPlan` — pure, DB-free dedup/rename decisions: groups files
   by basename or fingerprint, resolves destination-relative targets, and
   applies `{basename}_site{blog_id}.{ext}` renames (including `-{W}x{H}`
   thumbnail variants).
+- `MediaMigrator` — Phase 4 (§7.2): copies files (fingerprint dedup +
+  collision renames, destination-aware), recreates `attachment` posts +
+  postmeta (`_wp_attached_file`/`_wp_attachment_metadata` rewritten via
+  `SerializedDataRewriter`), records mappings in IdMap/MigrationTable.
+  Pure planning (`planTargets`, `rewriteAttachmentMetadata`,
+  `variantBasenames`, `collisionAlternatives`) unit-tested.
 - `MenuInventory` — per-site `nav_menu` terms + `nav_menu_item` posts with
   their `_menu_item_*` meta (type/object/object_id/url/parent) and menu
   `term_taxonomy_id`; shared by `MenuWidgetIntegrityCheck`/`MenuMigrator`.
@@ -203,6 +214,9 @@ security, backups, page builders).
 ## Reports (`src/Report/`)
 
 - `AuditReportWriter` — findings → Markdown + JSON.
+- `DivergentOptionsReportWriter` — the uncapped divergent-options map →
+  `integrity-*.xlsx` "divergent-options" tab (option_name / value /
+  site_ids); falls back to same-named CSV when ext-zip is missing.
 - `ContentAuditReportWriter` — rows → CSV, JSON, `-summary.md`, `.xlsx`
   (PhpSpreadsheet: wrapped text, ~5"-capped widths, bold filtered header,
   `blog_id`+`original_url` frozen; skipped when ext-zip is missing).

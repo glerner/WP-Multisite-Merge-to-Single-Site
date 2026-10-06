@@ -43,9 +43,20 @@ final class DivergentSiteOptionCheck implements AuditCheckInterface {
 	/**
 	 * Cap on findings: each finding is one option name with differing
 	 * values; beyond this the report would drown in e.g. per-plugin
-	 * transient options, which are noise, not conflicts.
+	 * transient options, which are noise, not conflicts. The complete
+	 * map still travels in the '.truncated' finding's context and is
+	 * written to the "divergent-options" tab of integrity-*.xlsx
+	 * (CSV fallback without ext-zip) -- nothing is dropped, only the
+	 * Markdown display is capped.
 	 */
 	private const MAX_FINDINGS = 50;
+
+	/**
+	 * Cap on how much of a single option VALUE is shown in the
+	 * Markdown report (serialized option blobs can be tens of KB).
+	 * Full values are always in the JSON context and the CSV detail.
+	 */
+	private const MAX_VALUE_DISPLAY = 1000;
 
 	/**
 	 * Cap on how many sites are shown per distinct value.
@@ -261,17 +272,13 @@ final class DivergentSiteOptionCheck implements AuditCheckInterface {
 
 		$remaining = count( $divergent ) - self::MAX_FINDINGS;
 		if ( $remaining > 0 ) {
-			$remainingKeys = array_slice( array_keys( $divergent ), self::MAX_FINDINGS );
-			$sample        = array_slice( $remainingKeys, 0, 20 );
-			$extra         = count( $remainingKeys ) - count( $sample );
-			$findings[]    = AuditFinding::info(
+			$findings[] = AuditFinding::info(
 				$this->name() . '.truncated',
 				sprintf(
-					'%d more divergent option name(s) not shown: %s%s',
-					$remaining,
-					implode( ', ', $sample ),
-					$extra > 0 ? sprintf( ' (and %d more)', $extra ) : ''
-				)
+					'%d more divergent option name(s) not shown. The complete list -- every option, every distinct value, and the sites holding each -- is in the "divergent-options" tab of var/reports/integrity-*.xlsx (or the same-named .csv when ext-zip is missing), and under this finding\'s "divergent_options" context in the JSON report.',
+					$remaining
+				),
+				array( 'divergent_options' => $divergent )
 			);
 		}
 
@@ -340,7 +347,11 @@ final class DivergentSiteOptionCheck implements AuditCheckInterface {
 		return implode( "\n", $lines );
 	}
 
+	/**
+	 * Values display in full up to MAX_VALUE_DISPLAY characters; longer
+	 * blobs are truncated with an ellipsis (full text is in JSON/CSV).
+	 */
 	private static function truncate( string $value ): string {
-		return strlen( $value ) > 80 ? substr( $value, 0, 77 ) . '...' : $value;
+		return strlen( $value ) > self::MAX_VALUE_DISPLAY ? substr( $value, 0, self::MAX_VALUE_DISPLAY - 3 ) . '...' : $value;
 	}
 }

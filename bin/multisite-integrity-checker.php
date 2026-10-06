@@ -58,6 +58,7 @@ use MergeMultisite\Migration\SitesPhpExporter;
 use MergeMultisite\Migration\TermMergeResolver;
 use MergeMultisite\Migration\UploadsPathResolver;
 use MergeMultisite\Report\AuditReportWriter;
+use MergeMultisite\Report\DivergentOptionsReportWriter;
 use MergeMultisite\Report\MissingMediaCopyScriptWriter;
 use MergeMultisite\Support\CliArguments;
 use MergeMultisite\Support\Logger;
@@ -135,6 +136,24 @@ $runner = new AuditRunner( $checks, $logger );
 
 $findings = $runner->run( $source, $config, $sites );
 
+$baseName = 'integrity-' . date( 'Ymd-His' );
+
+// The divergent-site-options .truncated finding carries the complete
+// uncapped map (option => value => site ids) in its context; write it
+// into the report's .xlsx workbook (divergent-options tab) so long
+// divergent lists are spreadsheet-reviewable -- CSV when ext-zip is
+// missing so a spreadsheet always lands.
+foreach ( $findings as $finding ) {
+	if ( $finding->checkName === 'divergent-site-options.truncated' && isset( $finding->context['divergent_options'] ) ) {
+		$detailPath = ( new DivergentOptionsReportWriter() )->write(
+			$finding->context['divergent_options'],
+			$projectRoot . '/var/reports',
+			$baseName
+		);
+		$logger->info( sprintf( 'Full divergent-options detail written to %s', $detailPath ) );
+	}
+}
+
 if ( $config->mediaSearchPaths !== array() ) {
 	$copyScript = ( new MissingMediaCopyScriptWriter() )->generate(
 		$findings,
@@ -157,7 +176,7 @@ foreach ( $checks as $check ) {
 $paths = ( new AuditReportWriter() )->write(
 	$findings,
 	$projectRoot . '/var/reports',
-	'integrity-' . date( 'Ymd-His' ),
+	$baseName,
 	$checkDescriptions
 );
 
