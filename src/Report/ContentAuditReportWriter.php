@@ -563,6 +563,7 @@ final class ContentAuditReportWriter {
 				$letter = Coordinate::stringFromColumnIndex( $index + 1 );
 				$sheet->setCellValue( $letter . ( $rowIndex + 2 ), $rowData[ $key ] ?? '' );
 			}
+			SpreadsheetRowHeight::apply( $sheet, $rowIndex + 2, $rowData, $columns, $widths );
 		}
 
 		$lastColumn  = Coordinate::stringFromColumnIndex( count( $columns ) );
@@ -626,6 +627,7 @@ final class ContentAuditReportWriter {
 				$letter = Coordinate::stringFromColumnIndex( $index + 1 );
 				$sheet->setCellValue( $letter . ( $rowIndex + 2 ), $entry[ $key ] );
 			}
+			SpreadsheetRowHeight::apply( $sheet, $rowIndex + 2, $entry, $columnKeys, $widths );
 		}
 
 		$lastColumn = Coordinate::stringFromColumnIndex( count( $columns ) );
@@ -678,6 +680,7 @@ final class ContentAuditReportWriter {
 				$letter = Coordinate::stringFromColumnIndex( $index + 1 );
 				$sheet->setCellValue( $letter . ( $rowIndex + 2 ), $row[ $key ] ?? '' );
 			}
+			SpreadsheetRowHeight::apply( $sheet, $rowIndex + 2, $row, $columns, $widths );
 		}
 
 		$lastColumn  = Coordinate::stringFromColumnIndex( count( $columns ) );

@@ -13,6 +13,16 @@ use PDOException;
  * destination), providing lazy connection and a couple of
  * WordPress-table-name-aware convenience methods.
  *
+ * The class stays `final`; the only way to inject a pre-built PDO is
+ * the test-only `forTesting()` factory, which skips the MySQL DSN
+ * path entirely (CR-401: unit tests never touch a configured
+ * database; SQLite in-memory fixtures own their data).
+ *
+ * Driver awareness: `driverName()`, `tableExists()`, and
+ * `insertIgnore()` branch on the active PDO driver so the shared
+ * read-side SQL (written dialect-neutral) and the migration-map write
+ * path both run against MySQL in production and SQLite in tests.
+ *
  * @package MergeMultisite
  */
 final class Connection {
@@ -20,6 +30,33 @@ final class Connection {
 	private ?PDO $pdo = null;
 
 	public function __construct( public readonly DatabaseConfig $config ) {
+	}
+
+	/**
+	 * Test-only factory: wrap an already-constructed PDO (e.g.
+	 * `new PDO('sqlite::memory:')`) instead of building a `mysql:`
+	 * DSN. The config is used purely for table-name derivation
+	 * (`siteTable()`/`networkTable()`); a bare test config defaults to
+	 * the `wp_` prefix.
+	 */
+	public static function forTesting( PDO $pdo, ?DatabaseConfig $config = null ): self {
+		$connection = new self(
+			$config ?? new DatabaseConfig(
+				host: 'localhost',
+				port: 3306,
+				socket: null,
+				database: 'test',
+				username: 'test',
+				password: '',
+				charset: 'utf8mb4',
+				tablePrefix: 'wp_',
+				uploadsPath: '/tmp/uploads',
+				label: 'test',
+			)
+		);
+		$connection->pdo = $pdo;
+
+		return $connection;
 	}
 
 	/**
@@ -225,6 +262,33 @@ EOT;
 	}
 
 	/**
+	 * Driver-aware INSERT IGNORE: MySQL spells it `INSERT IGNORE INTO`,
+	 * SQLite `INSERT OR IGNORE INTO`. The single write-path caller today
+	 * is MigrationTable::record() (idempotent resume); keeping the
+	 * dialect choice here means the migration-map table works identically
+	 * in MySQL production runs and SQLite integration tests.
+	 *
+	 * @param array<string, mixed> $params
+	 *
+	 * @throws ConnectionException If the query fails due to a missing table.
+	 */
+	public function insertIgnore( string $sql, array $params = array() ): int {
+		if ( $this->driverName() === 'sqlite' ) {
+			$sql = (string) preg_replace( '/^\s*INSERT\s+IGNORE\s+INTO/i', 'INSERT OR IGNORE INTO', $sql, 1 );
+		}
+
+		return $this->execute( $sql, $params );
+	}
+
+	/**
+	 * The active PDO driver name (`mysql`, `sqlite`, ...) — connects
+	 * lazily if needed.
+	 */
+	public function driverName(): string {
+		return (string) $this->pdo()->getAttribute( PDO::ATTR_DRIVER_NAME );
+	}
+
+	/**
 	 * Translates missing-table PDO exceptions into a clean ConnectionException.
 	 */
 	private function wrapQueryException( PDOException $exception ): \Throwable {
@@ -283,8 +347,20 @@ EOT;
 
 	/**
 	 * Determine whether a table exists in this connection's database.
+	 * MySQL asks `information_schema.TABLES` (it has no direct
+	 * "table exists" predicate); SQLite has no information_schema and
+	 * instead queries `sqlite_master`.
 	 */
 	public function tableExists( string $tableName ): bool {
+		if ( $this->driverName() === 'sqlite' ) {
+			$row = $this->fetchOne(
+				"SELECT name FROM sqlite_master WHERE type = 'table' AND name = :table",
+				array( 'table' => $tableName )
+			);
+
+			return $row !== null;
+		}
+
 		$row = $this->fetchOne(
 			'SELECT TABLE_NAME FROM information_schema.TABLES '
 			. 'WHERE TABLE_SCHEMA = :schema AND TABLE_NAME = :table',

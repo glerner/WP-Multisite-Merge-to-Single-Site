@@ -20,7 +20,7 @@
  *   --all-sites          Scan every non-deleted, included site (the
  *                        default when no --site is given).
  *   --post-types=a,b,c   Restrict to these post types (default: all
- *                        except config.php "excluded_post_types").
+ *                        except config.php "audit_excluded_post_types").
  *   --search=a,b,c       Instead of the detector pass, do a plain
  *                        case-insensitive content search for these
  *                        terms across the selected sites and write a
@@ -133,7 +133,7 @@ if ( $searchOption !== null ) {
 	);
 	$logger->info( sprintf( 'Searching %d site(s) for: %s', count( $sites ), implode( ', ', $needles ) ) );
 
-	$hits = $scanner->searchContent( $source, $sites, $needles, $postTypes, $config->excludedPostTypes, $config->excludedPostStatuses );
+	$hits = $scanner->searchContent( $source, $sites, $needles, $postTypes, $config->auditExcludedPostTypes, $config->excludedPostStatuses );
 
 	$outputPath = $projectRoot . '/var/reports/search-' . date( 'Ymd-His' ) . '.csv';
 	if ( ! is_dir( dirname( $outputPath ) ) ) {
@@ -235,7 +235,7 @@ foreach ( $sites as $site ) {
 $logger->info( sprintf( 'Scanning %d site(s) with %d detector(s)...', count( $sites ), count( $detectors ) ) );
 
 $scanner = new PostScanner( $detectors, $termMergeTargets, new PageTemplateResolver( $templateContexts ) );
-$details = $scanner->scanWithDetails( $source, $sites, $postTypes, $config->excludedPostTypes, $config->excludedPostStatuses );
+$details = $scanner->scanWithDetails( $source, $sites, $postTypes, $config->auditExcludedPostTypes, $config->excludedPostStatuses );
 $rows = array_map( static fn ( array $d ): ContentAuditRow => $d['row'], $details );
 
 // Which installed plugins the detected content signals actually map

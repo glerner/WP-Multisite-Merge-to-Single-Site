@@ -17,7 +17,7 @@ Verify everything with: `composer test && composer phpcs && composer phpstan`.
 
 | File                                  | Purpose                                                                                                                                                                                                                                                                                         |
 | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bin/migrate.php`                     | Migration entry point: runs the implemented phases in dependency order (users → terms → media). `--dry-run`, `--move-media-only`, `--site=`, `--config=`. Writes run reports to `var/reports/`, logs to `var/logs/`, ID-map snapshots to `var/state/`.                                          |
+| `bin/migrate.php`                     | Migration entry point: runs the implemented phases in dependency order (users → terms → media → posts). `--dry-run`, `--move-media-only`, `--site=`, `--config=`. Writes run reports to `var/reports/`, logs to `var/logs/`, ID-map snapshots to `var/state/`.                                  |
 | `bin/site-audit.php`                  | Content/plugin-usage audit: scans posts across included sites, reports blocks/shortcodes/plugin footprints per page. Options: `--site=<id>`, `--all-sites`, `--post-types=…`, `--search=…`, `--config=<dir>`. Writes CSV + JSON + summary.md + XLSX to `var/reports/`, plus a needs-review CSV. |
 | `bin/multisite-integrity-checker.php` | Read-only pre-flight audit: runs every `AuditCheckInterface` check. `--strict`, `--list-sites`, `--config=`. Writes Markdown + JSON to `var/reports/` and a media-recovery script to `var/`.                                                                                                    |
 | `bin/harden-admin-id.php`             | Renumbers destination admin user away from ID 1 (run once, before migration; see `AdminIdRenumberer`).                                                                                                                                                                                          |
@@ -31,17 +31,30 @@ Verify everything with: `composer test && composer phpcs && composer phpstan`.
 `plugin-roles.php`, `divergent-options.php` and produces one `MergeConfig`.
 All real config files are gitignored; each has a `*.sample.php` committed.
 
-- `config.php` — DB endpoints, `destination_url`, `excluded_post_types`,
-  `excluded_post_statuses`, `term_merge_rule`, `main_site` (blog_id whose
-  variant wins merge conflicts), `contact_page_paths`, `suppressions`
-  (finding-suppression rules; merged with plugin-roles.php's
-  `suppressions` section), `media_search_paths`, `spreadsheet_format`,
-  `wpscan_api_token`.
+- `config.php` — DB endpoints, `destination_url`,
+  `audit_excluded_post_types` (audit/report suppression only — does
+  NOT stop migration), `migration_excluded_post_types` (the only thing
+  that stops migration: junk/leftover types; everything else migrates),
+  `excluded_post_statuses`, `term_merge_rule`, `main_site` (blog_id
+  whose variant wins merge conflicts), `contact_page_paths`,
+  `suppressions` (finding-suppression rules; merged with
+  plugin-roles.php's `suppressions` section), `media_search_paths`,
+  `spreadsheet_format`, `wpscan_api_token`.
 - `sites.php` — per-site `include` bool + `category_name`/`category_slug`
   overrides, keyed by blog_id. `deleted` may appear on exported entries
   as an informational marker; it is ignored on load.
-- `option-keys.php` — per-plugin option-key patterns with migrate/exclude
-  decisions (`PluginOptionRule`).
+- `option-keys.php` — per-plugin option-key EXCEPTION list
+  (`PluginOptionRule`). Options migrate by default; entries only say
+  "not this one" or "only partly": `exclude`, `include_partial` +
+  `exclude_subkeys`, `exclude_option_keys` for individual drops under
+  an included prefix, `needs_adapter`. Credential-named options/sub-keys
+  (`PluginOptionRule::isSensitiveKeyName` — password/secret/key/token/
+  salt/nonce/license/credential as `_`-separated segments) DO migrate —
+  the destination plugin needs them — but are flagged in the report so
+  no secret travels invisibly. Runtime state never needs an entry:
+  `PluginOptionRule::BUILT_IN_EXCLUDED_OPTION_PATTERNS`
+  (Action Scheduler locks/demarkation, `_transient_*`/`_site_transient_*`
+  cache rows) is applied by the migrator on every site.
 - `shortcode-ignore.php` — shortcode tag names the audit should not report
   (prose/dump noise), one per line, brackets optional.
 - `term-overrides.php` — manual term-label merge decisions.
@@ -63,6 +76,13 @@ All real config files are gitignored; each has a `*.sample.php` committed.
 (`StaticEndpointResolver`, `LandoEndpointResolver`, `LocalEndpointResolver`)
 → `Endpoint` (host/port/socket) → `DatabaseConfig` → `Db\Connection` (PDO,
 lazy). Adding a provider = one new resolver class + registration.
+
+`Db\Connection` is `final`; its test-only `forTesting(PDO)` factory injects a
+pre-built PDO (skipping the `mysql:` DSN path) so SQLite fixtures can drive
+every consumer. It is driver-aware where SQL dialects differ:
+`driverName()`, `tableExists()` (`information_schema` on MySQL,
+`sqlite_master` on SQLite), and `insertIgnore()` (`INSERT IGNORE` /
+`INSERT OR IGNORE`, used by `MigrationTable::record()`).
 
 ## Audit pipeline (`src/Audit/`)
 
@@ -89,7 +109,7 @@ rides the `.truncated` finding's context into the `divergent-options` tab of
 ## Content audit pipeline (`src/ContentAudit/`)
 
 `PostScanner` queries `wp_{blogId}_posts` (+ postmeta grouped by post) with
-`excluded_post_types` / explicit `--post-types` → `ScannedPost` (content +
+`audit_excluded_post_types` / explicit `--post-types` → `ScannedPost` (content +
 `meta` as `meta_key => string[]` — values are arrays) → each
 `ContentDetectorInterface` emits labels under its category → `ContentAuditRow`
 (one row per post: blog_id, domain, post_id, post_type, post_status,
@@ -121,7 +141,11 @@ Detectors (`src/ContentAudit/Detectors/`):
   shortcodes, ecommerce/LMS post types, and any non-core block namespace
   (a page full of `uagb/*` breaks if Spectra isn't installed).
 - `DetectorExtras` — merge helpers for `plugin-roles.php`
-  `detector_extras`: `patternMap` (label → regex[], appends),
+  `detector_extras`: `patternMap` (label → regex[], appends; validates
+  every merged pattern compiles under `/…​/i` and throws
+  `InvalidArgumentException` naming the label + pattern, so a config
+  regex typo like an unescaped `/` fails at startup instead of
+  flooding "Unknown modifier" warnings and silently never matching),
   `tupleMap` (label → [meta_key, needle], replaces per label),
   `prefixMap` (prefix → label, replaces per prefix). The table-driven
   detectors (`SeoPluginDetector`, `FormPluginDetector`, `GalleryDetector`)
@@ -163,7 +187,25 @@ security, backups, page builders).
   postmeta (`_wp_attached_file`/`_wp_attachment_metadata` rewritten via
   `SerializedDataRewriter`), records mappings in IdMap/MigrationTable.
   Pure planning (`planTargets`, `rewriteAttachmentMetadata`,
-  `variantBasenames`, `collisionAlternatives`) unit-tested.
+  `variantBasenames`, `collisionAlternatives`) unit-tested; the DB +
+  filesystem execution paths are exercised end-to-end by
+  `tests/Integration/MediaMigratorEndToEndTest.php` on the SQLite fixture
+  schema.
+- `PostMigrator` — Phase 5 (§7.1): copies posts/pages/CPTs + postmeta +
+  term_relationships. Destination slug dedup (WP-style `-2`/`-3`) +
+  `/contact/` canonicalization via `ContactPageCanonicalizer`
+  (`destinationSlug()` is public pure logic, unit-tested); block
+  attributes remapped via `BlockAttributeRewriter` (`ref`→post,
+  `id`/`ids`→attachment); `_thumbnail_id` remapped via IdMap; every
+  post gets its site category + original categories/tags; two-pass
+  parent fixups (posts + attachment parents MediaMigrator deferred);
+  per-site `term_taxonomy.count` refresh; trash discarded (counted as
+  `trash_skipped`), drafts migrate, `future` posts listed in
+  `future_posts` for the §7.1 schedule-future-posts workflow.
+  Type exclusion comes only from `migration_excluded_post_types`
+  (+ built-ins owned by other phases) — `audit_excluded_post_types` is
+  audit-only and does not block migration.
+  Idempotent via 'post' entries in IdMap/MigrationTable.
 - `MenuInventory` — per-site `nav_menu` terms + `nav_menu_item` posts with
   their `_menu_item_*` meta (type/object/object_id/url/parent) and menu
   `term_taxonomy_id`; shared by `MenuWidgetIntegrityCheck`/`MenuMigrator`.
@@ -215,8 +257,12 @@ security, backups, page builders).
 
 - `AuditReportWriter` — findings → Markdown + JSON.
 - `DivergentOptionsReportWriter` — the uncapped divergent-options map →
-  `integrity-*.xlsx` "divergent-options" tab (option_name / value /
+  `integrity-*.xlsx` "divergent-options" tab (option_name / key / value /
   site_ids); falls back to same-named CSV when ext-zip is missing.
+  Options whose values are all serialized arrays are exploded into one
+  row per *diverging* sub-key (identical keys skipped, missing keys
+  shown `(absent)`); scalar options stay one row per whole value.
+  .xlsx rows are height-capped at 4″ (`MAX_ROW_HEIGHT_PT`).
 - `ContentAuditReportWriter` — rows → CSV, JSON, `-summary.md`, `.xlsx`
   (PhpSpreadsheet: wrapped text, ~5"-capped widths, bold filtered header,
   `blog_id`+`original_url` frozen; skipped when ext-zip is missing).
@@ -227,6 +273,10 @@ security, backups, page builders).
   `RawContentExtractor`.
 - `MissingMediaCopyScriptWriter` — missing-media findings + configured
   `media_search_paths` → bash `install -D` recovery script.
+- `SpreadsheetRowHeight` — shared .xlsx row-height cap (4″): estimates
+  wrapped lines per cell and fixes the row height only when content
+  would exceed the cap; applied by both report writers on every
+  worksheet.
 
 ## Support (`src/Support/`)
 
@@ -239,3 +289,23 @@ media dedup).
 `tests/Unit/` mirrors `src/`. Key convention: `ScannedPost` meta fixtures
 are `meta_key => array('value')` — scalars make `metaValue()` return the
 first character. `tests/bootstrap.php` sets up the autoloader.
+
+`tests/Support/` holds the SQLite test harness that lets DB-bound classes
+run their real SQL against a throwaway in-memory database instead of the
+configured Source/Destination: `WpTestSchema` builds
+WordPress-shaped schemas (`wp_posts`, `wp_postmeta`, `wp_terms`,
+`wp_term_taxonomy`, `wp_term_relationships`, `wp_options`, `wp_comments`,
+`wp_commentmeta`, plus `{prefix}{blogId}_*` multisite variants and the
+network `users`/`usermeta`/`blogs`/`sitemeta`) on `new PDO('sqlite::memory:')`
+with row-insert helpers, and `SqliteTestCase` skips cleanly when pdo_sqlite
+is absent while providing connection/config factories.
+
+`tests/Integration/` exercises the DB-bound classes against those fixtures
+(they never touch configured Source/Destination databases): inventory
+queries (`MediaInventory`, `MenuInventory`, `WidgetInventory::collect`),
+chunked meta fetching (`PostQueryHelper`, `CommentQueryHelper`, including
+the 5000-id IN() boundary), `MigrationTable` (dialect-split DDL +
+`INSERT OR IGNORE` idempotency), `MediaMigrator` end-to-end (collision
+renames + variants, hash dedup, dry-run, resume), and `PostMigrator`
+end-to-end (slug dedup, contact canonicalization, `_thumbnail_id`/block
+remapping, parent fixups, term counts, trash/future, dry-run, resume).

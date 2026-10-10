@@ -63,6 +63,24 @@ final class DetectorExtrasTest extends TestCase {
 	}
 
 	/**
+	 * Detectors compile patterns as '/'.$pattern.'/i', so an
+	 * unescaped '/' in a config pattern ends the regex early (the
+	 * rest is parsed as modifiers -- the real-world symptom was a
+	 * flood of "Unknown modifier 'f'" warnings from 'uagb/forms')
+	 * and the signature silently never matches. patternMap must
+	 * reject it with the label and pattern named.
+	 */
+	public function testPatternMapRejectsPatternWithUnescapedSlash(): void {
+		$this->expectException( \InvalidArgumentException::class );
+		$this->expectExceptionMessage( 'Spectra Form' );
+
+		DetectorExtras::patternMap(
+			array( 'Built In' => array( 'x' ) ),
+			array( 'Spectra Form' => array( 'uagb/forms' ) )
+		);
+	}
+
+	/**
 	 * TupleMap replaces a known label's whole [key, needle] tuple --
 	 * appending would corrupt the fixed two-element shape.
 	 */

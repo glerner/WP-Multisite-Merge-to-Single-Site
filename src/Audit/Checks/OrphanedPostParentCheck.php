@@ -30,11 +30,11 @@ final class OrphanedPostParentCheck implements AuditCheckInterface {
 
 		$typeExclusion = '';
 		$typeParams = array();
-		if ( $config->excludedPostTypes !== array() ) {
+		if ( $config->auditExcludedPostTypes !== array() ) {
 			$typeExclusion = ' AND child.post_type NOT IN ('
-				. implode( ', ', array_fill( 0, count( $config->excludedPostTypes ), '?' ) )
+				. implode( ', ', array_fill( 0, count( $config->auditExcludedPostTypes ), '?' ) )
 				. ')';
-			$typeParams = $config->excludedPostTypes;
+			$typeParams = $config->auditExcludedPostTypes;
 		}
 
 		foreach ( $sites as $site ) {

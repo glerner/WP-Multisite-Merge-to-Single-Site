@@ -3,9 +3,9 @@
 
 /**
  * Migration entry point. Runs the implemented phases in dependency
- * order (PLAN.md §5): Users, Terms, then Media. Phases 5-8 (posts,
- * comments, menus/widgets, URL rewriting) are not built yet and will
- * be appended here as they land.
+ * order (PLAN.md §5): Users, Terms, Media, then Posts/pages/CPTs.
+ * Phases 6-8 (comments, menus/widgets, URL rewriting) are not built
+ * yet and will be appended here as they land.
  *
  * Usage:
  *   php bin/migrate.php --move-media-only [--dry-run] [--site=<blog_id>]
@@ -49,6 +49,7 @@ use MergeMultisite\Db\ConnectionException;
 use MergeMultisite\Migration\IdMap;
 use MergeMultisite\Migration\MediaMigrator;
 use MergeMultisite\Migration\MigrationTable;
+use MergeMultisite\Migration\PostMigrator;
 use MergeMultisite\Migration\Site;
 use MergeMultisite\Migration\SiteSelector;
 use MergeMultisite\Migration\TermMigrator;
@@ -132,6 +133,10 @@ try {
 		new UploadsPathResolver( $config->source->uploadsPath ),
 		$config->destination->uploadsPath
 	) )->migrate( $source, $destination, $config, $sites, $idMap, $mapTable, $dryRun, $logger );
+
+	if ( ! $mediaOnly ) {
+		$reports['posts'] = ( new PostMigrator() )->migrate( $source, $destination, $config, $sites, $idMap, $mapTable, $dryRun, $logger );
+	}
 
 	if ( ! $dryRun ) {
 		$idMap->save( $projectRoot . '/var/state/idmap-' . date( 'Ymd-His' ) . '.json' );

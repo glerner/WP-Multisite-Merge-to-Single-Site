@@ -82,7 +82,7 @@ final class WidgetInventory {
 
 		$widgetRows = $source->fetchAll(
 			"SELECT option_name, option_value FROM {$optionsTable}
-             WHERE option_name LIKE 'widget\_%'
+             WHERE option_name LIKE 'widget\$_%' ESCAPE '$'
              ORDER BY option_name"
 		);
 

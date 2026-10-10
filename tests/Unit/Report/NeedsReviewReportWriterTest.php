@@ -105,6 +105,115 @@ final class NeedsReviewReportWriterTest extends TestCase {
 	}
 
 	/**
+	 * A draft with no post_name has no slug to build a URL from.
+	 * The original_url falls back to WordPress's '?p={id}' form
+	 * (rather than a broken "https://domain//"), and the destination
+	 * guess is left empty -- the destination ID isn't known, so any
+	 * guess would be wrong. Trashed posts are skipped outright.
+	 */
+	public function testSluglessAndTrashedRows(): void {
+		$writer = new NeedsReviewReportWriter();
+
+		$details = array(
+			array(
+				// Draft that never got a slug (real case: a
+				// scratch draft later trashed).
+				'row'  => new ContentAuditRow(
+					blogId: 2,
+					domain: 'website-tech.lc.lndo.site',
+					postId: 1408,
+					postType: 'post',
+					postStatus: 'draft',
+					slug: '',
+					postTitle: 'ChatGPT for Color Palettes',
+					categoryFindings: array( 'needs_review' => array( 'Spectra Form' ) ),
+				),
+				'post' => new ScannedPost(
+					blogId: 2,
+					postId: 1408,
+					postType: 'post',
+					postStatus: 'draft',
+					slug: '',
+					postTitle: 'ChatGPT for Color Palettes',
+					content: '<p>x</p>',
+					meta: array(),
+				),
+			),
+			array(
+				// Trashed row fed in anyway (e.g. a future caller
+				// forgetting the status filter): never reviewed.
+				'row'  => new ContentAuditRow(
+					blogId: 2,
+					domain: 'website-tech.lc.lndo.site',
+					postId: 1409,
+					postType: 'post',
+					postStatus: 'trash',
+					slug: 'old-post__trashed',
+					postTitle: 'Old Post',
+					categoryFindings: array( 'needs_review' => array( 'Divi' ) ),
+				),
+				'post' => new ScannedPost(
+					blogId: 2,
+					postId: 1409,
+					postType: 'post',
+					postStatus: 'trash',
+					slug: 'old-post__trashed',
+					postTitle: 'Old Post',
+					content: '<p>x</p>',
+					meta: array(),
+				),
+			),
+		);
+
+		$rows = $writer->toRows( $details, 'https://example.com' );
+
+		self::assertCount( 1, $rows );
+		self::assertSame( 'https://website-tech.lc.lndo.site/?p=1408', $rows[0]['original_url'] );
+		self::assertSame( '', $rows[0]['destination_url (guess)'] );
+		self::assertSame( 'draft', $rows[0]['post_status'] );
+	}
+
+	/**
+	 * A hierarchical page's original_url must use its parent/child
+	 * path -- matching the main audit tab -- not the bare leaf slug.
+	 */
+	public function testHierarchicalPathUsedForOriginalUrl(): void {
+		$writer = new NeedsReviewReportWriter();
+
+		$details = array(
+			array(
+				'row'  => new ContentAuditRow(
+					blogId: 1,
+					domain: 'example.lc.lndo.site',
+					postId: 50,
+					postType: 'page',
+					postStatus: 'publish',
+					slug: 'child',
+					postTitle: 'Child',
+					categoryFindings: array( 'needs_review' => array( 'Divi' ) ),
+					path: 'parent/child',
+				),
+				'post' => new ScannedPost(
+					blogId: 1,
+					postId: 50,
+					postType: 'page',
+					postStatus: 'publish',
+					slug: 'child',
+					postTitle: 'Child',
+					content: '<p>x</p>',
+					meta: array(),
+				),
+			),
+		);
+
+		$rows = $writer->toRows( $details, 'https://example.com' );
+
+		self::assertCount( 1, $rows );
+		self::assertSame( 'https://example.lc.lndo.site/parent/child/', $rows[0]['original_url'] );
+		self::assertSame( 'https://example.com/parent/child/', $rows[0]['destination_url (guess)'] );
+	}
+
+	/**
 	 * The CSV and the xlsx tab share the same row builder, so a CSV
 	 * written from toRows() parses back to the same fields.
 	 */

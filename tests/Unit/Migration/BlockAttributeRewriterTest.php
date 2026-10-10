@@ -80,8 +80,45 @@ final class BlockAttributeRewriterTest extends TestCase {
 
 		$rewritten = ( new BlockAttributeRewriter() )->rewrite( $content, 1, $idMap, array( 'categories' => 'term' ) );
 
-		// Nested arrays aren't single IDs -- only top-level integer
-		// attributes are remapped, so categories stays untouched.
+		// Nested arrays of objects aren't ID lists -- only flat integer
+		// values are remapped, so categories stays untouched.
 		self::assertSame( $content, $rewritten );
+	}
+
+	public function testRemapsIdListAttributeValues(): void {
+		$idMap = new IdMap();
+		$idMap->set( 'attachment', 4, 501, 901 );
+		$idMap->set( 'attachment', 4, 502, 902 );
+
+		$content = '<!-- wp:gallery {"ids":[501,502]} /-->';
+
+		self::assertSame(
+			'<!-- wp:gallery {"ids":[901,902]} /-->',
+			( new BlockAttributeRewriter() )->rewrite( $content, 4, $idMap, array( 'ids' => 'attachment' ) )
+		);
+	}
+
+	public function testRemapsSingleIdAttribute(): void {
+		$idMap = new IdMap();
+		$idMap->set( 'attachment', 4, 501, 901 );
+
+		$content = '<!-- wp:image {"id":501} /-->';
+
+		self::assertSame(
+			'<!-- wp:image {"id":901} /-->',
+			( new BlockAttributeRewriter() )->rewrite( $content, 4, $idMap, array( 'id' => 'attachment' ) )
+		);
+	}
+
+	public function testLeavesUnmappedListMembersAndNonNumericValuesAlone(): void {
+		$idMap = new IdMap();
+		$idMap->set( 'attachment', 4, 501, 901 );
+
+		$content = '<!-- wp:gallery {"ids":[501,999],"linkTo":"media"} /-->';
+
+		self::assertSame(
+			'<!-- wp:gallery {"ids":[901,999],"linkTo":"media"} /-->',
+			( new BlockAttributeRewriter() )->rewrite( $content, 4, $idMap, array( 'ids' => 'attachment' ) )
+		);
 	}
 }

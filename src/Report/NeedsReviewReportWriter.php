@@ -85,13 +85,26 @@ final class NeedsReviewReportWriter {
 			}
 
 			// Revisions are never migrated and would only duplicate the
-			// live post's review entry -- skip them.
-			if ( $row->postType === 'revision' ) {
+			// live post's review entry -- skip them. Same for trashed
+			// posts: the scan already excludes them, but guard here so
+			// a trashed row can never land in the report.
+			if ( $row->postType === 'revision' || $row->postStatus === 'trash' ) {
 				continue;
 			}
 
-			$originalUrl = 'https://' . $row->domain . '/' . trim( $row->slug, '/' ) . '/';
-			$destinationGuess = rtrim( $destinationUrl, '/' ) . '/' . trim( $row->slug, '/' ) . '/';
+			// Same permalink logic as ContentAuditRow::toRow(): the
+			// hierarchical path when there is one, else the slug, else
+			// -- for slugless drafts -- WordPress's '?p={id}' form
+			// rather than a broken "https://domain//". There is no
+			// destination guess without a slug (the destination post
+			// ID isn't known yet), so that column stays empty.
+			$permalinkSlug = trim( $row->path !== '' ? $row->path : $row->slug, '/' );
+			$originalUrl = $permalinkSlug !== ''
+				? 'https://' . $row->domain . '/' . $permalinkSlug . '/'
+				: 'https://' . $row->domain . '/?p=' . $row->postId;
+			$destinationGuess = $permalinkSlug !== ''
+				? rtrim( $destinationUrl, '/' ) . '/' . $permalinkSlug . '/'
+				: '';
 
 			$rawEntries = $extractor->extract( $post, $needsReview );
 			$rawLines = array();

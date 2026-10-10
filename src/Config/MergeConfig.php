@@ -18,7 +18,8 @@ final class MergeConfig {
 	 * @param string                               $destinationUrl         Canonical production domain, e.g. "https://example.com".
 	 * @param bool                                 $generateRedirectFiles  Whether to emit redirect map files.
 	 * @param int                                  $batchSize              Number of rows processed per migration batch.
-	 * @param string[]                             $excludedPostTypes      Post types always excluded from migration.
+	 * @param string[]                             $auditExcludedPostTypes Post types suppressed in audit/check output (NOT a migration exclusion — see $migrationExcludedPostTypes).
+	 * @param string[]                             $migrationExcludedPostTypes Post types that never migrate (user data like form submissions, field definitions, and variations migrates unless listed here).
 	 * @param string[]                             $excludedPostStatuses   Post statuses always excluded from migration.
 	 * @param string                               $termMergeRule           Term case-merge rule identifier.
 	 * @param string[]                             $contactPagePaths       Known contact-page path variants to canonicalize to /contact/.
@@ -75,7 +76,8 @@ final class MergeConfig {
 		public readonly string $destinationUrl,
 		public readonly bool $generateRedirectFiles,
 		public readonly int $batchSize,
-		public readonly array $excludedPostTypes,
+		public readonly array $auditExcludedPostTypes,
+		public readonly array $migrationExcludedPostTypes,
 		public readonly array $excludedPostStatuses,
 		public readonly string $termMergeRule,
 		public readonly array $contactPagePaths,

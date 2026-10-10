@@ -42,8 +42,46 @@ final class ConfigLoaderTest extends TestCase {
 		self::assertSame( 'wp_', $config->source->tablePrefix );
 		self::assertSame( 'https://example.com', $config->destinationUrl );
 		self::assertSame( 200, $config->batchSize );
-		self::assertSame( array( 'revision' ), $config->excludedPostTypes );
+		self::assertSame( array( 'revision' ), $config->auditExcludedPostTypes );
+		// migration_excluded_post_types defaults to empty: nothing is
+		// blocked from migration unless explicitly configured.
+		self::assertSame( array(), $config->migrationExcludedPostTypes );
 		self::assertNull( $config->wpscanApiToken );
+	}
+
+	public function testMigrationExcludedPostTypesAreLoadedAsStringList(): void {
+		$this->writeConfigPhp();
+		$config = ( new ConfigLoader( $this->tempDir ) )->load();
+		self::assertSame( array(), $config->migrationExcludedPostTypes );
+
+		file_put_contents(
+			$this->tempDir . '/config.php',
+			<<<'PHP'
+<?php
+return [
+    'source' => [
+        'host' => '127.0.0.1',
+        'database' => 'source_db',
+        'username' => 'root',
+        'password' => '',
+        'table_prefix' => 'wp_',
+        'uploads_path' => '/tmp/source-uploads',
+    ],
+    'destination' => [
+        'host' => '127.0.0.1',
+        'database' => 'dest_db',
+        'username' => 'root',
+        'password' => '',
+        'table_prefix' => 'wp_',
+        'uploads_path' => '/tmp/dest-uploads',
+    ],
+    'destination_url' => 'https://example.com',
+    'migration_excluded_post_types' => ['oembed_cache', 'jp_sitemap'],
+];
+PHP
+		);
+		$config = ( new ConfigLoader( $this->tempDir ) )->load();
+		self::assertSame( array( 'oembed_cache', 'jp_sitemap' ), $config->migrationExcludedPostTypes );
 	}
 
 	public function testSitesPhpIsOptionalAndDefaultsToEmpty(): void {

@@ -45,6 +45,15 @@ final class ContentAuditRow {
 	 * @return array<string, string>
 	 */
 	public function toRow(): array {
+		// Drafts and some post types can have an empty post_name --
+		// without a fallback that produces a bare "https://domain//"
+		// URL. '?p={id}' is WordPress's own permalink form for
+		// slugless/unpublished posts.
+		$permalinkSlug = trim( $this->path !== '' ? $this->path : $this->slug, '/' );
+		$originalUrl   = $permalinkSlug !== ''
+			? 'https://' . $this->domain . '/' . $permalinkSlug . '/'
+			: 'https://' . $this->domain . '/?p=' . $this->postId;
+
 		$row = array(
 			'blog_id' => (string) $this->blogId,
 			'domain' => $this->domain,
@@ -53,7 +62,7 @@ final class ContentAuditRow {
 			'post_status' => $this->postStatus,
 			'post_title' => $this->postTitle,
 			'slug' => $this->slug,
-			'original_url' => 'https://' . $this->domain . '/' . trim( $this->path !== '' ? $this->path : $this->slug, '/' ) . '/',
+			'original_url' => $originalUrl,
 			'template' => $this->template,
 			'template_status' => $this->templateStatus,
 		);

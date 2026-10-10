@@ -105,9 +105,14 @@ return array(
 	 */
 	'batch_size' => 200,
 
-	// Post types always excluded, regardless of the allow/deny lists
-	// below. Also respected by the audit checks (they aren't reported).
-	'excluded_post_types' => array( 'revision' ),
+	// Audit/report suppression only: post types the audit and
+	// integrity checks never scan or report. Does NOT stop migration.
+	'audit_excluded_post_types' => array( 'revision' ),
+
+	// Post types that never migrate (leftover/cache/junk only).
+	// Everything else -- including form submissions, field
+	// definitions, and plugin CPTs -- migrates by default.
+	'migration_excluded_post_types' => array( 'oembed_cache' ),
 
 	/*
 	 * Audit finding suppressions. Each rule hides findings whose check

@@ -32,9 +32,32 @@ final class MigrationTable {
 	/**
 	 * Create the map table if missing. DDL -- call BEFORE opening any
 	 * batch transaction (see class docblock).
+	 *
+	 * The DDL is dialect-split: MySQL needs `ENGINE=InnoDB` (and
+	 * supports inline `KEY` indexes), SQLite accepts neither, so the
+	 * test path creates the same columns with SQLite's syntax and adds
+	 * the dest_id index as a separate statement.
 	 */
 	public function ensure( Connection $destination ): void {
 		$table = $this->tableName( $destination );
+
+		if ( $destination->driverName() === 'sqlite' ) {
+			$destination->execute(
+				"CREATE TABLE IF NOT EXISTS {$table} (
+                    entity_type    TEXT            NOT NULL,
+                    source_blog_id INTEGER         NOT NULL DEFAULT 0,
+                    source_id      TEXT            NOT NULL,
+                    dest_id        BIGINT UNSIGNED NOT NULL,
+                    migrated_at    TEXT            NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (entity_type, source_blog_id, source_id)
+                )"
+			);
+			$destination->execute(
+				"CREATE INDEX IF NOT EXISTS {$table}_dest ON {$table} (dest_id)"
+			);
+			return;
+		}
+
 		$destination->execute(
 			"CREATE TABLE IF NOT EXISTS {$table} (
                 entity_type    VARCHAR(32)     NOT NULL,
@@ -67,11 +90,13 @@ final class MigrationTable {
 	}
 
 	/**
-	 * Record one migrated row's origin -> destination ID.
+	 * Record one migrated row's origin -> destination ID. `INSERT
+	 * IGNORE` (MySQL) / `INSERT OR IGNORE` (SQLite) keeps re-runs
+	 * idempotent against the primary key (entity_type, blog, source).
 	 */
 	public function record( Connection $destination, string $type, int $siteId, int|string $sourceId, int $destId ): void {
 		$table = $this->tableName( $destination );
-		$destination->execute(
+		$destination->insertIgnore(
 			"INSERT IGNORE INTO {$table} (entity_type, source_blog_id, source_id, dest_id) VALUES (:type, :blog, :source, :dest)",
 			array(
 				'type'   => $type,

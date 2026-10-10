@@ -1,8 +1,9 @@
 # WordPress Multisite → Single Site Merge: Project Plan
 
-Status: **Phases 0–1 built and in active use** (integrity checker runs
-against the real source DB; 118 PHPUnit tests, PHPCS + PHPStan clean).
-`site-audit.php` (Phase 2) also exists.
+Status: **Phases 0–5 built** (integrity checker runs against the real
+source DB; 348 PHPUnit tests — unit + SQLite-backed integration —
+PHPCS + PHPStan clean). Phases 3–5 (`bin/migrate.php`: users → terms →
+media → posts) are implemented; Phase 6 (comments) is next.
 
 Location: `~/sites/merge-multisite` (standalone project).
 
@@ -86,7 +87,7 @@ merge-multisite/
 ├── config/
 │   ├── config.sample.php    # DB credentials, paths, options (copy to config.php, gitignored)
 │   ├── sites.sample.php     # Site selection: include/exclude list + per-site overrides
-│   ├── option-keys.sample.php   # Per-plugin wp_options allowlist (see §7.5)
+│   ├── option-keys.sample.php   # Per-plugin wp_options exception list (§7.5)
 │   └── term-overrides.sample.php # Optional manual category/tag canonicalization
 ├── src/
 │   ├── Config/               # Config loading & validation
@@ -302,15 +303,18 @@ fixing the byte-length prefixes PHP's serialization format requires
 ## 7. Content type specifics
 
 ### 7.1 Posts, pages, custom post types
-- All post types migrated by default; `config.php` can exclude specific
-  post types (e.g. `revision`, `nav_menu_item` handled separately,
-  `customize_changeset`, other transient-like internal types) — a
-  sensible default-exclude list ships out of the box.
+- All post types migrate by default. `config.php`'s
+  `audit_excluded_post_types` only suppresses audit/report output (data
+  containers, caches, internal records); the separate
+  `migration_excluded_post_types` list is the only thing that stops
+  migration (junk/leftover types only — `revision`, `attachment`,
+  `nav_menu_item`, `wp_navigation`, `customize_changeset` are
+  built-in exclusions owned by other phases). Form submissions,
+  field definitions, plugin CPTs — migrate.
 - **Post status**, resolved per your confirmation: migrate everything
-  except `auto-draft` and the `revision` post type; `trash`ed content is
-  included by default but flagged distinctly in reports (config flags
-  let you instead fully exclude trash, or exclude drafts/private too,
-  per run).
+  except `auto-draft`, the `revision` post type, and `trash`ed content
+  — drafts and scheduled posts migrate normally; trash is discarded
+  (counted in the report's `trash_skipped`, never silent).
 - **`post_status=future` (scheduled posts)**: migrate the row with its
   `post_date`, but the `publish_future_post` cron event lives in the
   `cron` option and does NOT travel. After migration,
@@ -335,14 +339,18 @@ fixing the byte-length prefixes PHP's serialization format requires
   guarantee parents are processed before children in ID order).
 - **Plugin-owned custom post types need no adapter** — they migrate
   through the normal post pipeline as long as the type isn't in
-  `excluded_post_types`. The only requirement is that the type is
+  `migration_excluded_post_types`. The only requirement is that the type is
   *registered* on the destination (install the plugin, or a small
   must-use stub registration) or the rows are invisible in wp-admin.
   Meta values containing other post IDs are remapped via IdMap like
   any other reference. Concretely confirmed: **Flamingo** — source has
   56 `flamingo_contact` posts (address-book entries, sites
-  1/20/49/58/65) and zero `flamingo_inbound` submissions; keeping it =
-  keep the post type included + Flamingo installed on destination.
+  1/20/49/58/65, verified live) and zero `flamingo_inbound` posts.
+  `flamingo_inbound` IS how Flamingo stores submitted messages (a CPT,
+  one post per inbound submission) — zero rows means no submissions
+  exist to migrate, not a detection gap; if any existed they'd migrate
+  like any other CPT. Keeping Flamingo = keep the post type included +
+  Flamingo installed on destination.
 - **`product_variation` (WooCommerce)**: migrate normally — it is real
   data — but it has no frontend URL of its own (it renders inside the
   parent `product`), so the audit labels it non-frontend rather than
@@ -362,8 +370,8 @@ fixing the byte-length prefixes PHP's serialization format requires
 - **Plugin-internal post types** (Jetpack sitemap/migration rows
   `jp_sitemap`, `jp_sitemap_master`, `jp_img_sitemap`,
   `jetpack_migration`; error logs like `asa-errors`; caches like
-  `oembed_cache`): not content — exclude via `excluded_post_types` in
-  `config.php`; the plugin regenerates them.
+  `oembed_cache`): the plugin regenerates them — this is not content.
+  Exclude them via `migration_excluded_post_types` in `config.php`.
 - **Contact page normalization**: a configurable list of known contact
   page slugs/paths across sites (e.g. `/contact/`, `/contact-me/`,
   and any others discovered during audit) is treated as one logical
@@ -495,76 +503,117 @@ aren't naturally site-scoped once merged — flagged in report for manual
 placement review, since blindly merging widget areas from N sites into
 one theme's sidebars is not safe to automate.
 
-**Generic options.** A configurable allowlist (`config/option-keys.php`)
-lists which `wp_options` keys to bring over per plugin. Seeded from the
-plugin slugs you listed across your sites/clients (see below); easily
-extended for anything not covered.
+**Generic options — migrate-by-default.** Every `wp_options` row on
+every included site migrates unless explicitly excluded. Design
+decision (revised 2026-10-08, replacing the earlier allowlist idea):
+a dropped plugin setting is how merged sites silently break — CPT
+definitions, marketing configuration, SMTP credentials a plugin needs
+to keep working — while a migrated-but-unneeded setting is cheap and
+visible in a report. Anyone with database access can already read the
+"secret" values, so credential names are *not* a reason to skip
+migration (they are flagged in the report instead — see below).
 
-**Plugin inclusion rule**: the migrator
-considers a plugin's data eligible for migration if the plugin is
-**installed on the source site, whether currently active or not** (you
-pointed out things like `query-monitor`, or a migration tool you only
-activate occasionally, are legitimately inactive most of the time but
-still "belong" to the site). The integrity checker additionally flags:
+**Built-in never-migrate list** (destination-install state that copying
+would corrupt — NOT plugin settings, so these stay excluded
+regardless): destination identity (`siteurl`, `home`, `blogname`,
+`blogdescription`, `admin_email`, `admin_email_lifespan`), install
+state (`db_version`, `fresh_site`), runtime/transients
+(`_transient_*`, `_site_transient_*`, `cron`, `rewrite_rules`),
+per-site filesystem paths (`upload_path`, `fileupload_url`,
+`upload_url_path`), and options owned by other phases —
+`sidebars_widgets`/`widget_*` (widgets above), `active_plugins`
+(union of included sites' lists, reported), `template`/`stylesheet`/
+`theme_mods_*` (theme decision — `main_site` wins),
+`show_on_front`/`page_on_front`/`page_for_posts` (destination
+front-page decision), `{prefix}user_roles` (Phase 3 user/roles).
+
+**Conflict resolution.** Same `option_name` on several source sites
+with different values → `main_site`'s value wins when present,
+otherwise lowest blog_id. Every divergence is reported — the integrity
+checker's divergent-options machinery already produces the
+option ⇒ value ⇒ sites map this needs, so the migration report can
+point at the same data.
+
+**`option-keys.php` is the exception list, not an allowlist.** Entries
+say "not this one" or "only partly":
+  - `exclude` — plugin's options never migrate (decided, not reported
+    as orphaned data).
+  - `include_partial` + `exclude_subkeys` — serialized value copied
+    with listed sub-keys stripped (e.g. wordfence's IP block lists /
+    login-attempt logs — transient security data, not settings).
+  - `exclude_option_keys` — drop individual options under an
+    otherwise-migrating prefix (e.g. `akismet_spam_count` under
+    `akismet_*`).
+  - `include` — documentation that the decision was considered
+    (default behavior anyway).
+  - `needs_adapter` — custom tables/relationships need a `src/Plugins/`
+    adapter.
+  - Credential-named options and sub-keys
+    (`PluginOptionRule::isSensitiveKeyName` — password/secret/key/
+    token/salt/nonce/license/credential as `_`-separated segments)
+    DO migrate — the destination plugin needs e.g. its SMTP password,
+    and stripping it silently breaks outbound mail. They are flagged
+    in the migration report so no secret travels invisibly.
+
+**Plugin inclusion rule**: the migrator considers a plugin's data
+eligible for migration if the plugin is **installed on the source
+site, whether currently active or not** (things like `query-monitor`
+or a migration tool you only activate occasionally legitimately sit
+inactive but "belong" to the site). The integrity checker additionally
+flags:
   - Plugins with data **in the database** but **not currently
-    installed** at all (leftover cruft from a removed plugin) — for you
-    to decide whether to migrate or discard.
+    installed** at all (leftover cruft) — still migrated under the
+    default, listed for your discard decision.
   - Any active/installed plugin with **no configured handling** in
-    `option-keys.php` and no adapter in `src/Plugins/` — so nothing is
-    silently dropped.
+    `option-keys.php` and no adapter in `src/Plugins/` — reported as
+    migrated-by-default so every decision stays visible, not as a gate
+    that blocks it.
 
-**Default `option-keys.php` seeding**, from the plugin lists you
-provided across your sites/clients:
-  - **Generally include** (site-identity/config, safe & useful):
-    `wordpress-seo` / `autodescription` (SEO Framework) /
-    `wordpress-seo-premium`, `redirection`, `wpforms-lite`, `ws-form`,
-    `ninja-forms`, `contact-form-7`, `formidable`, `sureforms`,
-    `woocommerce` core settings, `elementor`/`elementor-pro` global
-    settings, `astra-addon`/theme-builder settings,
+**Default `option-keys.php` seeding** — under migrate-by-default, only
+entries carrying an exclusion or adapter decision do anything; the
+rest are documentation:
+  - **Include (documented decisions)**: `wordpress-seo` /
+    `autodescription` (SEO Framework) / `wordpress-seo-premium`,
+    `redirection`, `wpforms-lite`, `ws-form`, `ninja-forms`,
+    `contact-form-7`, `formidable`, `sureforms`, `woocommerce` core
+    settings, `elementor`/`elementor-pro` global settings,
+    `astra-addon`/theme-builder settings,
     `ultimate-addons-for-gutenberg`, `accessibility-checker`,
-    `relevanssi`, `two-factor` (user meta only, not secrets — see
-    below), `simple-cloudflare-turnstile`.
-  - **Include settings but explicitly exclude security-sensitive
-    sub-data**: `wordfence` (keep general firewall/scan configuration;
-    **exclude** blocked-IP lists, live-traffic/login-attempt logs —
-    transient security data, not settings) — matches your note that
-    it's fine either way but you don't need the block lists.
-  - **Exclude by default (security-sensitive, credentials-bearing)**:
-    backup/migration tools that store remote-storage or DB-transfer
-    credentials — `updraftplus` (its S3/remote-storage credentials are
-    not something a migration script should silently copy),
-    `wp-migrate-db`, `prime-mover`, `duplicator-pro`, and similar. These
-    are flagged in the audit report as "detected, intentionally
-    excluded — reconfigure manually on destination" rather than
-    migrated. Any older/replaced backup plugin's data is excluded outright
-    as obsolete.
-  - **Exclude as dev-only / no meaningful DB footprint**:
-    `query-monitor` (unlikely to have DB data worth migrating).
+    `relevanssi`, `two-factor` (user meta only), `akismet` (minus
+    `akismet_spam_count`), `memberwing`, `simple-cloudflare-turnstile`.
+  - **Include settings but strip transient sub-data**: `wordfence`
+    (keep firewall/scan configuration; **exclude** blocked-IP lists,
+    live-traffic/login-attempt logs — transient security data, not
+    settings).
+  - **Backup/migration tools: settings MIGRATE, flagged for review**:
+    `updraftplus`, `wp-migrate-db`, `prime-mover`, `duplicator-pro` —
+    their schedules, destinations, and remote-storage settings carry
+    over so backups keep running after the merge. The migration report
+    flags each for destination review (is the backup name right; should
+    the destination/credentials be updated?).
+  - **Exclude (dev-only / server-specific / runtime state)**: dev-only
+    `query-monitor`; server-specific `litespeed-cache`,
+    `object-cache.php`, `closte-requirements` — reported so they can
+    be reinstalled/reconfigured on the destination; Action Scheduler's
+    runtime queue state (`action_scheduler_lock_*`, `*_demarkation` —
+    recreated by the plugin); `000-prime-mover-constants`.
   - **Pods — decided: detector only, no adapter.** You installed the
     plugin but never built Pod content types, so there's no custom
     table data to migrate. The integrity checker's `pods-detection`
     section stays (it confirms that at a glance and catches any Pods
     tables on a future reuse of this tool), but no `PodsAdapter` gets
     written until we know what data to adapt.
-  - Everything else you listed (`ai-engine`, `akismet`,
-    `advanced-custom-fields`, `google-site-kit`, `instant-images`,
-    `litespeed-cache`/`object-cache.php` (server/cache config, not
-    portable — excluded), `media-library-assistant`, `media-sync`,
-    `mailin`, `mp3-music-player-by-sonaar`, `quiz-master-next`,
-    `learndash-*`, `woocommerce-*` add-ons, etc.) will get a best-effort
-    generic-options entry where it's a simple settings array, and be
-    listed as "no adapter yet" in the report otherwise — nothing
-    migrates silently without appearing in a report first.
   - **Decided so far based on the real DB**: `akismet` → include
-    (`akismet_*`). `flamingo` → keep its `flamingo_contact` CPT (§7.1);
-    no `flamingo_inbound` submissions exist. `ai-engine`, `gl-reinvent`,
-    `greenshift-*`, `instant-images`, `mailin`, `media-library-assistant`,
+    (`akismet_*`, minus `akismet_spam_count`). `flamingo` → keep its
+    `flamingo_contact` CPT (§7.1); no `flamingo_inbound` submissions
+    exist. `ai-engine`, `gl-reinvent`, `greenshift-*`,
+    `instant-images`, `mailin`, `media-library-assistant`,
     `media-sync`, `optimization-detective`, `phoenix-media-rename`,
-    `regenerate-thumbnails`, `safe-svg`, `wp-graphql`, `wpwm-cfce-plugin`,
-    `wpwm-theme-variation-display` → verified **no data anywhere**
-    (options/postmeta/posts/tables all empty); suppressed in config
-    rather than given exclude rules since there is simply nothing to
-    migrate. `000-prime-mover-constants` → exclude.
+    `regenerate-thumbnails`, `safe-svg`, `wp-graphql`,
+    `wpwm-cfce-plugin`, `wpwm-theme-variation-display` → verified
+    **no data anywhere** (options/postmeta/posts/tables all empty);
+    suppressed in config rather than given rules since there is
+    simply nothing to migrate.
   - Your two old custom plugins (`gl-block-bad-logins`,
     `gl-debug-mode-only-you.php`) are **ignored completely**, per your
     instruction — not even reported.
@@ -703,9 +752,10 @@ checks). Checks include:
 - Orphaned postmeta/commentmeta (rows referencing a deleted post).
 - Category/tag case-collision report (preview of what term-merge will
   do, before you commit to running the real migration).
-- Plugin data vs. `option-keys.php` allowlist cross-check (installed
-  vs. active, per §7.5), plus "data in DB but plugin not installed"
-  detection.
+- Plugin data vs. `option-keys.php` exception-list cross-check
+  (installed vs. active, per §7.5 — no rule means "migrates by
+  default", not "won't migrate"), plus "data in DB but plugin not
+  installed" detection.
 - Pods custom-table/relationship detection (§7.5).
 - Menu items / widgets referencing missing objects.
 - **Duplicate `wp_template`/`wp_template_part` slugs across sites**
@@ -724,23 +774,29 @@ checks). Checks include:
 **Report conventions** (implemented, after an audit-noise reduction pass):
 
 - Every `### <check>` section opens with a one-line `description()`
-  from the check class, so individual finding lines stay terse —
-  `Site N, Post X "title" (post_type) field=value -- assessment` for
-  post findings, `"option": "v1", "v2"` or site-grouped value lines for
-  divergent options, `Site N, Option "x" ...` for option findings.
+  from the check class, so individual finding lines stay terse.
+  Line formats:
+  - Post findings: `Site N, Post X "title" (post_type) field=value -- assessment`
+  - Divergent options: `"option": "v1", "v2"` or site-grouped value lines
+  - Option findings: `Site N, Option "x" ...`
 - `suppressions` in `config.php` filters findings centrally in
   `AuditRunner` by check name (prefix `*` allowed) + context match;
   one `audit.suppressed` line reports the hidden count.
-- `excluded_post_types` is respected by the post checks, not just the
-  migrator.
-- Plugin section output: per-plugin `no-rule` warnings stay one line
-  each; a `plugin-data.undecided` finding lists paste-ready rules
-  grouped by intent — `include` lines only where option rows were
-  actually detected (prefix pre-filled from the slug's common
-  spellings, with a `// found:` comment), a "data lives elsewhere"
-  block probing postmeta keys / post types / custom tables, then
-  `exclude` lines and `suppressions` lines. `mode => 'exclude'` in
-  option-keys.php means "decided: never migrate, don't report."
+- `audit_excluded_post_types` is respected by the post checks (it
+  never affects migration — `migration_excluded_post_types` does).
+- Plugin section output, per plugin:
+  - `no-rule` warnings stay one line each (no rule = migrates by
+    default, §7.5).
+  - A `plugin-data.undecided` finding lists paste-ready rules grouped
+    by intent:
+    - `include` lines — only where option rows were actually detected
+      (prefix pre-filled from the slug's common spellings, with a
+      `// found:` comment);
+    - a "data lives elsewhere" block probing postmeta keys / post
+      types / custom tables;
+    - `exclude` lines and `suppressions` lines.
+  - `mode => 'exclude'` in option-keys.php means "decided: never
+    migrate, don't report."
 - Orphaned plugin data is one Markdown table (plugin rule(s) |
   pattern | site | rows | unique names); rules sharing an option
   pattern merge into one row.
@@ -829,17 +885,26 @@ blocking issues are found; `--strict` flag to also fail on warnings.
 3. **Phase 2** — `site-audit.php` (independent of the migration
    pipeline; also safe to run immediately, and useful on its own for
    your plugin-consolidation decisions). ✅ Done — built and hardened
-   through the 2026-10-03 review (CR-402/403/404: divergent-option
-   config, URL normalization, block-inventory + needs-review XLSX tabs).
+   through the 2026-10-03 review (docs/code-review-2026-10-03.md —
+   CR-402/403/404: divergent-option config, URL normalization,
+   block-inventory + needs-review XLSX tabs).
 4. **Phase 3** — Users + Terms migrators (+ term-merge report). ✅ Built (UserMigrator and TermMigrator implemented with IdMap/MigrationTable integration and unit tests).
 5. **Phase 4** — Media migrator (filesystem copy/dedup/rename,
    `--move-media-only`). ✅ Implemented: `MediaMigrator` +
    `bin/migrate.php` (users → terms → media, `--dry-run`,
    `--move-media-only`, `--site=`, resume via the migration-map table).
-   Pure planning logic unit-tested; DB-bound paths await CR-401
-   (SQLite-backed test harness).
+   Fully tested — pure planning units plus the CR-401 SQLite harness
+   (docs/code-review-2026-10-03.md — CR-401) covering the end-to-end
+   DB + filesystem paths.
 6. **Phase 5** — Posts/pages/CPTs + postmeta + parent-fixups + contact
-   page canonicalization.
+   page canonicalization. ✅ Implemented: `PostMigrator` — slug
+   dedup (`-2`/`-3`), `/contact/` canonicalization, block-attribute ID
+   remapping (`wp:image` id, `wp:gallery` ids, `wp:navigation` ref),
+   `_thumbnail_id` remap, term relationships + per-site
+   `term_taxonomy.count` refresh, two-pass parent fixups, trash
+   discarded (`trash_skipped` in report), scheduled posts listed in
+   `future_posts`, dry-run + resume. Unit + SQLite-backed integration
+   tests.
 7. **Phase 6** — Comments.
 8. **Phase 7** — Menus/widgets (as orphaned data + tree-view report) +
    generic options + plugin adapters.
@@ -896,8 +961,8 @@ these are scheduled work:
   cache blobs and session logs into memory. An enhancement would allow users to
   specify explicit non-autoloaded option keys or plugin patterns to inspect for
   differences without opening the door to memory exhaustion. (Note: this is an
-  audit-only enhancement; `OptionsMigrator` in §7.5 already migrates configured
-  plugin options regardless of their autoload flag).
+  audit-only enhancement; `OptionsMigrator` in §7.5 migrates all non-excluded
+  options regardless of their autoload flag).
 - ~~**Domain URL normalization in serialized option comparisons.**~~
   ✅ Implemented 2026-10-03: `DivergentSiteOptionCheck` normalizes each
   site's home URL to a placeholder before grouping (via
@@ -937,12 +1002,15 @@ default I'll build if you don't weigh in further:
 - Won't guess at ambiguous merges (category parent conflicts, widget
   placement, menu merging, plugins without adapters) — these are always
   surfaced in reports for your decision rather than silently resolved.
-- Won't migrate credentials-bearing plugin data (backup/migration tool
-  remote-storage or DB credentials) — always excluded and flagged for
-  manual reconfiguration instead.
+- Won't silently drop plugin settings — options migrate by default
+  (§7.5). Backup/migration tools migrate too, flagged for review
+  (backup name / destination / credentials on the merged site);
+  dev-only and server-specific tools are excluded but reported so they
+  can be reinstalled. Credential-named settings DO migrate (the
+  destination plugin needs e.g. its SMTP password) and are flagged in
+  the report.
 
 ---
 
-**Next step:** Phase 5 (Posts/pages/CPTs + postmeta + parent-fixups +
-contact page canonicalization) — Phases 0–4 are built and verified
+**Next step:** Phase 6 (Comments) — Phases 0–5 are built and verified
 against the real source DB.

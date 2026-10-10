@@ -28,6 +28,9 @@ final class DetectorExtras {
 	 * @param mixed                   $extras  Raw config value.
 	 *
 	 * @return array<string, string[]>
+	 *
+	 * @throws \InvalidArgumentException When a merged pattern does not
+	 *         compile as a '/.../i' regex (e.g. an unescaped '/').
 	 */
 	public static function patternMap( array $builtin, mixed $extras ): array {
 		if ( ! is_array( $extras ) ) {
@@ -43,6 +46,26 @@ final class DetectorExtras {
 				$builtin[ $label ] ?? array(),
 				array_map( 'strval', $patterns )
 			);
+		}
+
+		foreach ( $builtin as $label => $patterns ) {
+			foreach ( $patterns as $pattern ) {
+				// Detectors compile each pattern as '/'.$pattern.'/i',
+				// so an unescaped '/' ends the regex early and every
+				// remaining character is parsed as a modifier --
+				// surfacing as hundreds of "Unknown modifier" warnings
+				// per scan plus a signature that silently never
+				// matches. Fail here instead, naming the culprit.
+				if ( @preg_match( '/' . $pattern . '/i', '' ) === false ) {
+					throw new \InvalidArgumentException(
+						sprintf(
+							"detector_extras: pattern for label '%s' does not compile as '/%s/i' -- escape literal '/' as '\\/'",
+							$label,
+							$pattern
+						)
+					);
+				}
+			}
 		}
 
 		return $builtin;

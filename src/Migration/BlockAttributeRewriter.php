@@ -31,7 +31,10 @@ final class BlockAttributeRewriter {
 
 	/**
 	 * Remap every whitelisted integer attribute in every block
-	 * comment found in `$content`.
+	 * comment found in `$content`. Attribute values may be a single
+	 * ID (`wp:image {"id":123}`) or a list of IDs (`wp:gallery
+	 * {"ids":[1,2,3]}`); each is remapped via IdMap when a mapping
+	 * exists, and left untouched otherwise.
 	 *
 	 * @param int                   $blogId        Source blog ID (IdMap key).
 	 * @param IdMap                 $idMap         Recorded old→new post IDs.
@@ -58,17 +61,42 @@ final class BlockAttributeRewriter {
 
 				$changed = false;
 				foreach ( $refAttributes as $attribute => $entityType ) {
-					if ( ! isset( $attributes[ $attribute ] ) || ! is_numeric( $attributes[ $attribute ] ) ) {
+					if ( ! isset( $attributes[ $attribute ] ) ) {
 						continue;
 					}
 
-					$newId = $idMap->get( $entityType, $blogId, (int) $attributes[ $attribute ] );
-					if ( $newId === null ) {
+					if ( is_numeric( $attributes[ $attribute ] ) ) {
+						$newId = $idMap->get( $entityType, $blogId, (int) $attributes[ $attribute ] );
+						if ( $newId === null ) {
+							continue;
+						}
+
+						$attributes[ $attribute ] = $newId;
+						$changed = true;
 						continue;
 					}
 
-					$attributes[ $attribute ] = $newId;
-					$changed = true;
+					if ( is_array( $attributes[ $attribute ] ) ) {
+						$remapped = array();
+						$listChanged = false;
+						foreach ( $attributes[ $attribute ] as $listIndex => $listValue ) {
+							if ( is_numeric( $listValue ) ) {
+								$newListId = $idMap->get( $entityType, $blogId, (int) $listValue );
+								if ( $newListId !== null ) {
+									$remapped[ $listIndex ] = $newListId;
+									$listChanged = true;
+									continue;
+								}
+							}
+
+							$remapped[ $listIndex ] = $listValue;
+						}
+
+						if ( $listChanged ) {
+							$attributes[ $attribute ] = $remapped;
+							$changed = true;
+						}
+					}
 				}
 
 				if ( ! $changed ) {

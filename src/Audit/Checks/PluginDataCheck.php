@@ -40,7 +40,7 @@ final class PluginDataCheck implements AuditCheckInterface {
 	}
 
 	public function description(): string {
-		return 'Plugin wp_options data: installed plugins with no option-keys.php rule (won\'t migrate), option rows for uninstalled plugins (likely leftover), and plugins needing a migrator adapter.';
+		return 'Plugin wp_options data: installed plugins with no option-keys.php rule (migrate by default; exclude them explicitly to drop), option rows for uninstalled plugins (likely leftover), and plugins needing a migrator adapter.';
 	}
 
 	public function run( Connection $source, MergeConfig $config, array $sites ): array {
@@ -119,7 +119,7 @@ final class PluginDataCheck implements AuditCheckInterface {
 				$findings[] = AuditFinding::warning(
 					$this->name() . '.no-rule',
 					sprintf(
-						"Plugin \"%s\" on site(s) %s -- no option-keys.php rule; its wp_options data will NOT be migrated. Paste-ready rules grouped under 'plugin-data.undecided' below.",
+						"Plugin \"%s\" on site(s) %s -- no option-keys.php rule; its wp_options data migrates BY DEFAULT (add an 'exclude' rule to drop it). Paste-ready rules grouped under 'plugin-data.undecided' below.",
 						$slug,
 						$siteSummary
 					),
@@ -220,12 +220,12 @@ final class PluginDataCheck implements AuditCheckInterface {
 		}
 
 		$message = sprintf(
-			'%d installed plugin(s) have NO option-keys.php rule -- their wp_options data will not migrate.',
+			'%d installed plugin(s) have NO option-keys.php rule -- their wp_options data migrates BY DEFAULT under migrate-everything; add a rule only to drop or partially strip it.',
 			count( $undecided )
 		);
 		if ( $include !== array() ) {
-			$message .= "\n  **To keep a plugin's wp_options data, paste its entry into config/option-keys.php**"
-				. "\n  (option prefixes detected from its sites; verify before keeping):"
+			$message .= "\n  **To document a plugin's options decision, paste an 'include' entry into config/option-keys.php**"
+				. "\n  (its options migrate either way -- this just marks the decision made; option prefixes detected from its sites, verify before pasting):"
 				. "\n" . implode( "\n", $include );
 		}
 		if ( $elsewhere !== array() || $nothingFound !== array() ) {
