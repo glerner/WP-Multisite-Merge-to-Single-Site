@@ -429,6 +429,28 @@ fixing the byte-length prefixes PHP's serialization format requires
   files and creates/updates attachment posts without touching
   posts/terms/comments/etc., for when you just want to get media in
   place first (composable with `--dry-run`, as you requested).
+- **Problematic filenames — suggest, don't rename (decided)**. AI
+  generated images (DALL·E etc.) routinely carry non-ASCII characters
+  (`·` a mid-dot), embedded timestamps, and 150+ character names that break URLs,
+  browsers, and Windows filesystems. The integrity checker's
+  `media-filenames` check flags every such attachment and *suggests* a
+  safe replacement name (noise stripped, non-ASCII/illegal characters
+  replaced, length capped, falling back to alt/caption/title when the
+  filename carries no description), with alt text, caption, title, and
+  featured-image usage context in the `media-filenames` tab of
+  `integrity-*.xlsx`. The tool does **not** rename: a rename must also
+  update `_wp_attached_file`, `_wp_attachment_metadata`, and every
+  content reference, which is a media-rename plugin's job (e.g. [Phoenix Media Rename](https://wordpress.org/plugins/phoenix-media-rename/ "") or [Media File Renamer: Rename Images &amp; Files for SEO (AI-Powered)](https://wordpress.org/plugins/media-file-renamer/ "") ). No
+  `config/media-renames.php` in v1; if a future multisite needs
+  programmatic renames, that config + a migrator adapter is the
+  extension point.
+- **Missing size variants are regenerable.** When `_wp_attachment_metadata`
+  names thumbnails that are not on disk (source drift after thumbnail
+  deletion), the media phase warns per attachment and the final log line
+  prints the destination attachment IDs with the `wp media regenerate
+  <ids>` command (README "Missing image sizes"). Missing *original*
+  files cannot be regenerated — they are only reported, matching their
+  state on the source.
 
 ### 7.3 Users
 - Registered users are **preserved individually** (not consolidated).
@@ -456,6 +478,18 @@ fixing the byte-length prefixes PHP's serialization format requires
     conflict for manual resolution (WordPress itself would never allow
     this in one network, so seeing it indicates the source data needs
     attention before migrating).
+- **`author_mapping` (config option, implemented).** Old user_logins
+  that should NOT be copied as accounts: their posts (and all author
+  references) are attributed to a destination user instead — the value
+  is a destination `user_login`, or the token `'admin'` for the
+  configured `admin_user_id`. This is the "old main author → new main
+  author" case: e.g. an old admin account that is redundant with the
+  fresh destination admin (same person, renamed login) is aliased
+  rather than duplicated, and its 100s of posts keep real authorship
+  instead of the anonymous `authors_fallback`. An unresolvable target
+  (login not on the destination, or no `admin_user_id`) is warned and
+  the account migrates normally — never silently dropped. PostMigrator
+  needs no changes: it resolves authors through the same IdMap entry.
 
 ### 7.4 Comments
 - Migrated with `comment_post_ID` and `user_id` rewritten via IdMap;

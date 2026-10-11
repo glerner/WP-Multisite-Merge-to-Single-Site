@@ -232,6 +232,63 @@ final class PostMigratorTest extends SqliteTestCase {
 		self::assertSame( 5, $this->destinationRowCount( $this->destination->siteTable( 'posts', 1 ) ) );
 	}
 
+	/**
+	 * When a source category shares the site's normalized name,
+	 * TermMigrator maps it onto the site category's term_taxonomy_id
+	 * (real case: site 28 "Homes For Sale" had a category literally
+	 * named "Homes For Sale"). A post in that category must not get
+	 * the site-category relationship inserted twice -- before the
+	 * dedup, this raised a PRIMARY-key violation that failed the post.
+	 */
+	public function testSourceTermMergedIntoSiteCategoryDoesNotDuplicateRelationship(): void {
+		$this->seedSiteOnePosts();
+
+		// Source site 1 has its own category that TermMigrator merged
+		// into the site category (dest tt 50, seeded in setUp).
+		$sourceTaxonomy = $this->source->siteTable( 'term_taxonomy', 1 );
+		$this->source->execute(
+			"INSERT INTO {$sourceTaxonomy} (term_taxonomy_id, term_id, taxonomy, description, parent, count) VALUES (2, 2, 'category', '', 0, 0)"
+		);
+		$this->idMap->set( 'term', 1, 2, 500 );
+		$this->idMap->set( 'term_taxonomy', 1, 2, 50 );
+
+		WpTestSchema::insertPost(
+			$this->source->pdo(),
+			$this->source->siteTable( 'posts', 1 ),
+			array(
+				'ID' => 110,
+				'post_title' => 'In Site Category',
+				'post_name' => 'in-site-category',
+			)
+		);
+		WpTestSchema::insertTermRelationship(
+			$this->source->pdo(),
+			$this->source->siteTable( 'term_relationships', 1 ),
+			array(
+				'object_id' => 110,
+				'term_taxonomy_id' => 2,
+			)
+		);
+
+		$report = $this->runMigrate( dryRun: false );
+
+		self::assertSame( 0, $report['posts_failed'] );
+
+		$bySlug = $this->destinationPostsBySlug();
+		$newId = (int) $bySlug['in-site-category']['ID'];
+		$rows = $this->destination->fetchAll(
+			"SELECT term_taxonomy_id FROM {$this->destination->siteTable( 'term_relationships', 1 )} WHERE object_id = :id",
+			array( 'id' => $newId )
+		);
+
+		// Exactly one relationship -- the merged category IS the site
+		// category -- and the assignment still counts.
+		self::assertCount( 1, $rows );
+		self::assertSame( 50, (int) $rows[0]['term_taxonomy_id'] );
+		self::assertSame( 6, $report['site_category_assignments'] );
+		self::assertSame( 6, (int) $this->destination->fetchScalar( "SELECT count FROM {$this->destination->siteTable( 'term_taxonomy', 1 )} WHERE term_taxonomy_id = 50" ) );
+	}
+
 	public function testAutoDraftAndTrashAreExcluded(): void {
 		$this->seedSiteOnePosts();
 		WpTestSchema::insertPost(

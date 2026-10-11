@@ -21,7 +21,8 @@ Verify everything with: `composer test && composer phpcs && composer phpstan`.
 | `bin/site-audit.php`                  | Content/plugin-usage audit: scans posts across included sites, reports blocks/shortcodes/plugin footprints per page. Options: `--site=<id>`, `--all-sites`, `--post-types=…`, `--search=…`, `--config=<dir>`. Writes CSV + JSON + summary.md + XLSX to `var/reports/`, plus a needs-review CSV. |
 | `bin/multisite-integrity-checker.php` | Read-only pre-flight audit: runs every `AuditCheckInterface` check. `--strict`, `--list-sites`, `--config=`. Writes Markdown + JSON to `var/reports/` and a media-recovery script to `var/`.                                                                                                    |
 | `bin/harden-admin-id.php`             | Renumbers destination admin user away from ID 1 (run once, before migration; see `AdminIdRenumberer`).                                                                                                                                                                                          |
-| `bin/test-connections.php`            | Pre-flight connection test: verifies both source and destination databases and uploads directories simultaneously in one PHP process.                                                                                                                                                           |
+| `bin/reset-destination.php`           | Returns the destination DB to a known starting state: `--snapshot` dumps all `{prefix}*` tables to `var/state/destination-baseline.sql`; default drops them and re-imports that baseline (confirm prompt, `--yes` to skip); `--drop-only` empties the schema for `wp core install`. Uses resolved config credentials + `mysqldump`/`mysql`, no WP-CLI needed. |
+| `bin/check-connections.php`           | Pre-flight connection check: verifies both source and destination databases and uploads directories simultaneously in one PHP process.                                                                                                                                                           |
 | `bin/run-wpscan.php`                  | Optional wrapper around external `wpscan` CLI (Ruby gem) for vulnerability checks against a live URL.                                                                                                                                                                                           |
 
 ## Configuration (`config/`)
@@ -39,7 +40,10 @@ All real config files are gitignored; each has a `*.sample.php` committed.
   whose variant wins merge conflicts), `contact_page_paths`,
   `suppressions` (finding-suppression rules; merged with
   plugin-roles.php's `suppressions` section), `media_search_paths`,
-  `spreadsheet_format`, `wpscan_api_token`.
+  `spreadsheet_format`, `wpscan_api_token`, `author_mapping`
+  (old user_login → destination user_login, or the token `'admin'` for
+  `admin_user_id`; aliased users are not copied, their posts are
+  attributed to the target).
 - `sites.php` — per-site `include` bool + `category_name`/`category_slug`
   overrides, keyed by blog_id. `deleted` may appear on exported entries
   as an informational marker; it is ignored on load.
@@ -82,7 +86,13 @@ pre-built PDO (skipping the `mysql:` DSN path) so SQLite fixtures can drive
 every consumer. It is driver-aware where SQL dialects differ:
 `driverName()`, `tableExists()` (`information_schema` on MySQL,
 `sqlite_master` on SQLite), and `insertIgnore()` (`INSERT IGNORE` /
-`INSERT OR IGNORE`, used by `MigrationTable::record()`).
+`INSERT OR IGNORE`, used by `MigrationTable::record()`). Every MySQL
+connect applies `WORDPRESS_SESSION_SQL_MODE` — strips the session
+`NO_ZERO_DATE`/`NO_ZERO_IN_DATE` modes like wpdb does for WP itself, so
+legitimate `'0000-00-00 00:00:00'` values (draft `post_date_gmt`,
+`user_registered`, `comment_date_gmt`) insert instead of dying on
+error 1292 under MySQL 8's default strict mode. Strict modes are kept
+so real data problems still surface as errors.
 
 ## Audit pipeline (`src/Audit/`)
 
@@ -104,7 +114,11 @@ differ across sites; Markdown shows 50, the uncapped option/value/site map
 rides the `.truncated` finding's context into the `divergent-options` tab of
 `integrity-*.xlsx`),
 `ContactPageDiscoveryCheck`, `PodsDetectionCheck`,
-`MalwareIndicatorCheck` (backed by pure `MalwareHeuristics`).
+`MalwareIndicatorCheck` (backed by pure `MalwareHeuristics`),
+`MediaFilenameCheck` (problematic filename characters — non-ASCII,
+spaces, Windows-illegal, length — with suggested safe names via
+`MediaFilenameSuggester`, plus alt/caption/title/where-used context
+for the `media-filenames` xlsx tab).
 
 ## Content audit pipeline (`src/ContentAudit/`)
 
@@ -167,6 +181,11 @@ security, backups, page builders).
 
 - `SiteSelector` — `wp_blogs` rows → `Site` objects merged with `sites.php`
   include/exclude + category overrides.
+- `UserMigrator` — network users → destination, highest-role resolution
+  (`RoleResolver`), same-login+email linking, conflict skipping, and
+  `author_mapping` aliases (old login → destination login or the
+  `'admin'` token; the account isn't copied, its posts land on the
+  target via the IdMap).
 - `PluginInventory` — installed slugs from `wp-content/plugins/` on disk +
   per-site/network `active_plugins` (serialized options; `wp_sitemeta` for
   network-active).
@@ -182,10 +201,22 @@ security, backups, page builders).
   by basename or fingerprint, resolves destination-relative targets, and
   applies `{basename}_site{blog_id}.{ext}` renames (including `-{W}x{H}`
   thumbnail variants).
+- `MediaFilenameSuggester` — pure filename hygiene: `problems()`
+  catalogs URL/browser/Windows-illegal characters (non-ASCII, `<>:"/\|?*`,
+  spaces, control chars, trailing dots, reserved device names, >150 chars);
+  `suggest()` proposes a safe name (strips upload dates/timestamps and
+  `-e{unix_ms}` suffixes, replaces illegal chars, caps at a word boundary,
+  falls back to alt → caption → title for generic names). Shared by
+  `MediaFilenameCheck`; the migrator never renames on its own.
 - `MediaMigrator` — Phase 4 (§7.2): copies files (fingerprint dedup +
   collision renames, destination-aware), recreates `attachment` posts +
   postmeta (`_wp_attached_file`/`_wp_attachment_metadata` rewritten via
   `SerializedDataRewriter`), records mappings in IdMap/MigrationTable.
+  Missing generated size variants warn once per attachment (basename
+  list kept in the message) rather than once per file — regenerable
+  source drift, often 8+ sizes per image. The run's final log line
+  prints the destination attachment IDs plus the `wp media regenerate`
+  command when variants were missing.
   Pure planning (`planTargets`, `rewriteAttachmentMetadata`,
   `variantBasenames`, `collisionAlternatives`) unit-tested; the DB +
   filesystem execution paths are exercised end-to-end by
@@ -197,7 +228,10 @@ security, backups, page builders).
   (`destinationSlug()` is public pure logic, unit-tested); block
   attributes remapped via `BlockAttributeRewriter` (`ref`→post,
   `id`/`ids`→attachment); `_thumbnail_id` remapped via IdMap; every
-  post gets its site category + original categories/tags; two-pass
+  post gets its site category + original categories/tags (deduped on
+  destination term_taxonomy_id — a source category sharing the site's
+  normalized name merges onto the site-category tt, so the
+  site-category insert must not re-add it); two-pass
   parent fixups (posts + attachment parents MediaMigrator deferred);
   per-site `term_taxonomy.count` refresh; trash discarded (counted as
   `trash_skipped`), drafts migrate, `future` posts listed in
@@ -232,6 +266,11 @@ security, backups, page builders).
 - `SitesPhpExporter` — Site list → paste-ready `sites.php` source
   (deleted sites included, marked `include=false` + `deleted=true`).
 - `Destination/AdminIdRenumberer` — SQL to move the admin off user ID 1.
+- `Destination/DestinationReset` — baseline snapshot/restore for the
+  destination DB: prefix-filtered table listing (MySQL `SHOW TABLES`,
+  SQLite `sqlite_master`), prefixed-table drop (FK checks off), and
+  `mysqldump`/`mysql` command builders (host+port or socket; password
+  via `MYSQL_PWD`, never `--password` on the command line).
 - `TemplateInventory` — wp_template/wp_template_part rows per site, each
   with its `wp_theme` term (active stylesheet, stale theme, or
   "plugin/file") and post_content.
@@ -273,6 +312,11 @@ security, backups, page builders).
   `RawContentExtractor`.
 - `MissingMediaCopyScriptWriter` — missing-media findings + configured
   `media_search_paths` → bash `install -D` recovery script.
+- `MediaFilenameReportWriter` — media-filename findings → spreadsheet:
+  appends a `media-filenames` tab to the integrity .xlsx (same workbook
+  as `divergent-options`), CSV fallback when ext-zip is missing.
+  Columns: site/attachment/file/issues/suggested name+source/alt/
+  caption/title/where-used.
 - `SpreadsheetRowHeight` — shared .xlsx row-height cap (4″): estimates
   wrapped lines per cell and fixes the row height only when content
   would exceed the cap; applied by both report writers on every

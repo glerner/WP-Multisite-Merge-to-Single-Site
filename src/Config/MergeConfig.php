@@ -69,6 +69,11 @@ final class MergeConfig {
 	 *                                                              divergent-site-options check ignores
 	 *                                                              (from divergent-options.php), on top
 	 *                                                              of its built-in exclusion list.
+	 * @param array<string, string>                $authorMapping Old user_login => destination user_login,
+	 *                                                              or the token 'admin' for the configured
+	 *                                                              admin_user_id. Aliased users are not
+	 *                                                              copied; their posts are attributed to
+	 *                                                              the mapped destination user (§7.3).
 	 */
 	public function __construct(
 		public readonly DatabaseConfig $source,
@@ -94,6 +99,7 @@ final class MergeConfig {
 		public readonly array $pluginRoles = array(),
 		public readonly array $detectorExtras = array(),
 		public readonly array $divergentOptionExclusions = array(),
+		public readonly array $authorMapping = array(),
 	) {
 	}
 

@@ -39,6 +39,7 @@ use MergeMultisite\Audit\Checks\ContactPageDiscoveryCheck;
 use MergeMultisite\Audit\Checks\DivergentSiteOptionCheck;
 use MergeMultisite\Audit\Checks\MalwareIndicatorCheck;
 use MergeMultisite\Audit\Checks\MediaFileCheck;
+use MergeMultisite\Audit\Checks\MediaFilenameCheck;
 use MergeMultisite\Audit\Checks\MenuWidgetIntegrityCheck;
 use MergeMultisite\Audit\Checks\OrphanedMediaFileCheck;
 use MergeMultisite\Audit\Checks\OrphanedMetaCheck;
@@ -59,6 +60,7 @@ use MergeMultisite\Migration\TermMergeResolver;
 use MergeMultisite\Migration\UploadsPathResolver;
 use MergeMultisite\Report\AuditReportWriter;
 use MergeMultisite\Report\DivergentOptionsReportWriter;
+use MergeMultisite\Report\MediaFilenameReportWriter;
 use MergeMultisite\Report\MissingMediaCopyScriptWriter;
 use MergeMultisite\Support\CliArguments;
 use MergeMultisite\Support\Logger;
@@ -121,6 +123,7 @@ $checks = array(
 	new OrphanedMetaCheck(),
 	new UserConflictCheck(),
 	new MediaFileCheck(),
+	new MediaFilenameCheck(),
 	new TermCaseCollisionCheck( new TermMergeResolver( $config->mainSite ) ),
 	new TemplateSlugCollisionCheck(),
 	new PluginDataCheck(),
@@ -143,15 +146,34 @@ $baseName = 'integrity-' . date( 'Ymd-His' );
 // into the report's .xlsx workbook (divergent-options tab) so long
 // divergent lists are spreadsheet-reviewable -- CSV when ext-zip is
 // missing so a spreadsheet always lands.
+$divergentXlsxPath = null;
 foreach ( $findings as $finding ) {
 	if ( $finding->checkName === 'divergent-site-options.truncated' && isset( $finding->context['divergent_options'] ) ) {
-		$detailPath = ( new DivergentOptionsReportWriter() )->write(
+		$divergentXlsxPath = ( new DivergentOptionsReportWriter() )->write(
 			$finding->context['divergent_options'],
 			$projectRoot . '/var/reports',
 			$baseName
 		);
-		$logger->info( sprintf( 'Full divergent-options detail written to %s', $detailPath ) );
+		$logger->info( sprintf( 'Full divergent-options detail written to %s', $divergentXlsxPath ) );
 	}
+}
+
+// The media-filename findings ride the SAME workbook: appending a
+// "media-filenames" tab keeps the integrity report in one file.
+$filenameFindings = array_values(
+	array_filter(
+		$findings,
+		static fn ( AuditFinding $finding ): bool => str_starts_with( $finding->checkName, 'media-filenames.' )
+	)
+);
+if ( $filenameFindings !== array() ) {
+	$mediaPath = ( new MediaFilenameReportWriter() )->write(
+		$filenameFindings,
+		$projectRoot . '/var/reports',
+		$baseName,
+		$divergentXlsxPath
+	);
+	$logger->info( sprintf( 'Media-filename rename suggestions written to %s', $mediaPath ) );
 }
 
 if ( $config->mediaSearchPaths !== array() ) {

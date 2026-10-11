@@ -116,3 +116,38 @@ Once your destination site is installed in any local environment, run:
 php bin/harden-admin-id.php
 ```
 This renumbers the initial administrator user from ID 1 to a random ID to prevent collisions with migrated authors, and prints the `'admin_user_id'` to paste into `config/config.php`.
+
+---
+
+## Resetting the Destination to a Clean Baseline
+
+To re-test a migration from the documented starting state (fresh WP
+install + hardened admin), you do **not** need to reinstall WordPress —
+snapshot that state once, then restore it in seconds:
+
+```bash
+# ONE TIME, while the destination is in the known-good starting state:
+php bin/reset-destination.php --snapshot        # -> var/state/destination-baseline.sql
+
+# ANY TIME, to wipe migrated data and return to that exact state:
+php bin/reset-destination.php                  # drops {prefix}* tables, imports the baseline
+php bin/reset-destination.php --yes            # same, without the confirmation prompt
+
+# Or, to empty the schema entirely (for `lando wp core install`):
+php bin/reset-destination.php --drop-only
+```
+
+Why snapshot/restore instead of `wp db reset` + `wp core install`: a
+reinstall recreates the admin as ID 1 with a new password, losing the
+renumbered `admin_user_id` and any setup applied since. The restored
+baseline is byte-for-byte the starting state — no WP-CLI, Lando, or
+admin password needed (it uses the resolved destination credentials
+from `config/config.php` plus `mysqldump`/`mysql`).
+
+**What a reset does NOT touch:** `wp-config.php`, `wp-content`
+(plugins, themes, uploads), `config/config.php` — all files.
+Uploaded media copied by `migrate.php` stays on disk; the migrator's
+fingerprint dedup reuses it on the next run (or delete the
+`uploads/YYYY` directories by hand for a truly clean slate). The
+migration map table shares the destination prefix and *is* dropped,
+so the next `migrate.php` run starts a full migration.

@@ -234,15 +234,12 @@ final class PostMigrator {
 							$newId = $this->insertPost( $destination, $destPostsTable, $row, $content, $slug, $config, $idMap, $report );
 							$this->updateGuid( $destination, $destPostsTable, $newId, $config->destinationUrl );
 							$this->insertPostMeta( $destination, $destPostMetaTable, $newId, $meta, $blogId, $idMap, $report );
-							$this->writeRelationships( $destination, $destRelationshipsTable, $newId, $relationshipsByPost[ $oldId ] ?? array(), $blogId, $idMap, $report );
 
 							$siteCategoryTtId = $idMap->get( 'site_category', $blogId, 'category' );
-							if ( $siteCategoryTtId !== null ) {
-								$this->insertRelationshipRow( $destination, $destRelationshipsTable, $newId, $siteCategoryTtId );
-								++$report['site_category_assignments'];
-							} else {
+							if ( $siteCategoryTtId === null ) {
 								$this->warn( $warnings, $logger, sprintf( 'Site %d has no site-category mapping; posts were not tagged with the site category.', $blogId ) );
 							}
+							$this->writeRelationships( $destination, $destRelationshipsTable, $newId, $relationshipsByPost[ $oldId ] ?? array(), $blogId, $siteCategoryTtId, $idMap, $report );
 						} catch ( \Throwable $e ) {
 							++$report['posts_failed'];
 							$this->warn( $warnings, $logger, sprintf( 'Post %d (site %d) failed: %s', $oldId, $blogId, $e->getMessage() ) );
@@ -596,11 +593,19 @@ final class PostMigrator {
 	}
 
 	/**
-	 * Write a post's original category/tag relationships, remapping each
-	 * source term_taxonomy_id through the terms IdMap (keyed by the
-	 * source term_id, matching TermMigrator). Duplicate destinations and
+	 * Write a post's original category/tag relationships plus the new
+	 * top-level site category (PLAN.md §6), remapping each source
+	 * term_taxonomy_id through the terms IdMap (keyed by the source
+	 * term_id, matching TermMigrator). Duplicate destinations and
 	 * unmapped terms are skipped (unmapped counted) rather than raising
 	 * a primary-key violation.
+	 *
+	 * The site-category insert shares the dedup set: when a source
+	 * category has the same normalized name as the site itself,
+	 * TermMigrator maps it onto the site category's term_taxonomy_id,
+	 * and a post already in that category would otherwise be written
+	 * twice (observed on site 28, "Homes For Sale"). The post is in the
+	 * category either way, so the assignment still counts.
 	 *
 	 * @param array<int, array<string, mixed>> $relationships
 	 * @param PostMigrationReport              $report
@@ -611,6 +616,7 @@ final class PostMigrator {
 		int $newPostId,
 		array $relationships,
 		int $blogId,
+		?int $siteCategoryTtId,
 		IdMap $idMap,
 		array &$report
 	): void {
@@ -628,6 +634,13 @@ final class PostMigrator {
 
 			$this->insertRelationshipRow( $destination, $relationshipsTable, $newPostId, $destTtId );
 			++$report['relationships_written'];
+		}
+
+		if ( $siteCategoryTtId !== null ) {
+			if ( ! isset( $seen[ $siteCategoryTtId ] ) ) {
+				$this->insertRelationshipRow( $destination, $relationshipsTable, $newPostId, $siteCategoryTtId );
+			}
+			++$report['site_category_assignments'];
 		}
 	}
 

@@ -47,7 +47,7 @@ final class UserMigrator {
 	 *
 	 * @param Site[] $sites Included sites only.
 	 *
-	 * @return array{migrated:int, linked:array<int, string>, skipped:int, roles:array<int, string>, conflicts:array<int, string>}
+	 * @return array{migrated:int, linked:array<int, string>, skipped:int, roles:array<int, string>, conflicts:array<int, string>, aliased:array<int, string>}
 	 *         Counts and per-user report lines.
 	 *
 	 * @throws \Throwable When a batch fails (rolled back first).
@@ -109,6 +109,7 @@ final class UserMigrator {
 			'skipped' => 0,
 			'roles' => array(),
 			'conflicts' => array(),
+			'aliased' => array(),
 		);
 
 		$userIds = array_keys( $rolesByUser );
@@ -132,6 +133,37 @@ final class UserMigrator {
 
 					$login = (string) $user['user_login'];
 					$email = strtolower( (string) $user['user_email'] );
+
+					// author_mapping (§7.3): an old login declared an
+					// alias is NOT copied -- its ID maps straight to the
+					// destination target, so every post/comment by the
+					// old account lands on the real user. Target is a
+					// destination user_login, or the token 'admin' for
+					// the configured admin_user_id. An unresolvable
+					// target falls through to normal migration (no data
+					// loss, warned).
+					$aliasTarget = $config->authorMapping[ $login ] ?? null;
+					if ( $aliasTarget !== null ) {
+						$targetId = $aliasTarget === 'admin'
+							? $config->destination->adminUserId
+							: ( $destByLogin[ $aliasTarget ] ?? null );
+
+						if ( $targetId === null ) {
+							$logger->warning( sprintf( 'author_mapping: target for "%s" (%s) not found on destination -- migrating the account normally.', $login, $aliasTarget ) );
+						} else {
+							$idMap->set( 'user', 0, $userId, $targetId );
+							if ( ! $dryRun ) {
+								$mapTable->record( $destination, 'user', 0, $userId, $targetId );
+							}
+							$report['aliased'][] = sprintf(
+								'"%s" -> %s #%d (author_mapping)',
+								$login,
+								$aliasTarget === 'admin' ? 'admin' : $aliasTarget,
+								$targetId
+							);
+							continue;
+						}
+					}
 
 					// Same login AND same email: same person -> link.
 					// Mismatched pairings are genuine conflicts to flag.
@@ -194,11 +226,12 @@ final class UserMigrator {
 
 		$logger->info(
 			sprintf(
-				'Users: %d migrated, %d linked to existing, %d skipped, %d conflict(s).',
+				'Users: %d migrated, %d linked to existing, %d skipped, %d conflict(s), %d aliased.',
 				$report['migrated'],
 				count( $report['linked'] ),
 				$report['skipped'],
-				count( $report['conflicts'] )
+				count( $report['conflicts'] ),
+				count( $report['aliased'] )
 			)
 		);
 

@@ -88,14 +88,58 @@ php bin/harden-admin-id.php
 
 After running `harden-admin-id.php`, set `'admin_user_id'` in `config/config.php` to the assigned ID.
 
+### Baseline snapshot for re-testing (one time)
+
+`bin/reset-destination.php` restores a **snapshot** of the destination
+taken at the known-good starting state (fresh install + hardened admin
++ any plugins/theme you set up afterwards) — it does not reinstall
+WordPress itself. So once, right after step 5, capture that state:
+
+```bash
+# A. (only if the destination DB already contains migrated data or
+#    other state) empty the schema from the merge-multisite folder:
+php bin/reset-destination.php --drop-only --yes
+
+# B. Reinstall into the now-empty schema — must run from the
+#    destination folder (or use --path), because WP-CLI/Lando operate
+#    on a WordPress install:
+cd ~/sites/destination-wp        # your destination folder
+wp core install \
+  --url="https://destination.example.com" \
+  --title="Merged Site" \
+  --admin_user="initial_admin" \
+  --admin_password="choose-a-strong-password" \
+  --admin_email="admin@example.com"
+
+# C. Back in the merge-multisite folder, harden the new admin to the
+#    SAME ID that config.php already expects, then snapshot:
+cd ~/sites/merge-multisite
+php bin/harden-admin-id.php --new-id=83     # your config's admin_user_id
+php bin/reset-destination.php --snapshot   # -> var/state/destination-baseline.sql
+```
+
+**From now on, no folder changes are needed.** Resetting and re-testing
+is entirely from the merge-multisite folder:
+
+```bash
+php bin/reset-destination.php --yes   # drop {prefix}* tables, import baseline
+php bin/migrate.php                   # fresh full migration
+```
+
+The folder-hopping above is only the *one-time* baseline build (steps
+B–C are needed whenever you want to recreate the starting state from
+scratch — e.g. after installing plugins/theme or changing settings you
+want the baseline to include). Re-run `--snapshot` after such changes
+to refresh it; a reset always restores the latest snapshot.
+
 ## Tools
 
-### `bin/test-connections.php`
+### `bin/check-connections.php`
 
 Pre-flight connection verification: connects to both the source multisite and destination single-site databases simultaneously within a single PHP process, verifies that table prefixes match real tables, checks user and site counts, validates that `admin_user_id` in `config.php` matches a real destination user, and tests readability/writeability of the uploads directories.
 
 ```bash
-php bin/test-connections.php
+php bin/check-connections.php
 ```
 
 **Connection refused?** `SQLSTATE[HY000] [2002]` / `[2003]` means the
@@ -144,6 +188,20 @@ set it. Re-running `--list-sites-php` is safe -- it keeps the
 include/category overrides already in the file.
 
 Reports are written to `var/reports/integrity-*.md`, and to `var/reports/integrity-*.json` (same information, 2 formats). When the divergent-site-options section is truncated (more than 50 divergent options), the complete uncapped list — every option, every distinct value, and the sites holding each — is written to a `divergent-options` tab in `var/reports/integrity-*.xlsx` (or a same-named `.csv` when ext-zip is missing), so you can sort/filter the whole list in a spreadsheet.
+
+**Media filenames.** The `media-filenames` check flags attachment
+filenames whose characters are problematic in URLs, browsers, or on
+Windows — non-ASCII (e.g. `DALL·E-...`), spaces, `<>:"/\|?*`,
+trailing dots, reserved device names, and very long names — and
+suggests a safe replacement (noise like upload dates and WordPress's
+`-e{unix_ms}` suffix stripped, length capped). Every flagged
+attachment is listed in the `media-filenames` tab of
+`var/reports/integrity-*.xlsx` with its alt text, caption, title,
+where it is used as a featured image, and the suggested name. The
+tool only *suggests* — renaming must also update `_wp_attached_file`,
+`_wp_attachment_metadata`, and content references, so apply renames at
+the source with a media-rename plugin (e.g. Phoenix Media Rename)
+using the suggested names.
 
 ### `bin/site-audit.php`
 
@@ -279,12 +337,35 @@ php bin/harden-admin-id.php
 php bin/harden-admin-id.php --new-id=42
 ```
 
-### `bin/migrate.php` (Phases 3–4 implemented)
+### `bin/reset-destination.php`
+
+Returns the destination database to a known "fresh install" state
+without reinstalling WordPress: snapshot the documented starting state
+once (fresh install + `harden-admin-id`), then drop every `{prefix}*`
+table and re-import that baseline any time you want to re-test a
+migration from scratch. Restoring the baseline preserves the renumbered
+`admin_user_id` — something a plain `wp core install` would lose.
+Uses the resolved destination credentials plus `mysqldump`/`mysql`; no
+WP-CLI needed.
+
+```bash
+php bin/reset-destination.php --snapshot   # once, at the clean starting state
+php bin/reset-destination.php              # confirm, drop {prefix}*, import baseline
+php bin/reset-destination.php --yes        # same, no prompt
+php bin/reset-destination.php --drop-only  # empty schema (for wp core install)
+```
+
+Only the database is touched — `wp-config.php`, `wp-content`, and
+`config/config.php` are unaffected; copied media files stay on disk and
+are deduped on the next run. See `docs/local-environments.md`.
+
+### `bin/migrate.php` (Phases 3–5 implemented)
 
 The migration itself. Runs the implemented phases in dependency order
 (PLAN.md §5): **Users** → **Terms** → **Media** (files + attachment
-posts). Phases 5–8 (posts, comments, menus/widgets, URL rewriting) are
-not built yet and will be appended here as they land.
+posts) → **Posts** (pages/CPTs + postmeta + term_relationships).
+Phases 6–8 (comments, menus/widgets, URL rewriting) are not built yet
+and will be appended here as they land.
 
 ```bash
 php bin/migrate.php --dry-run                      # plan the whole run
@@ -314,6 +395,23 @@ php bin/migrate.php                                # real run, all built phases
 - Run reports land in `var/reports/migrate-*.json`, logs in
   `var/logs/migrate-*.log`, and the in-memory ID map is snapshotted to
   `var/state/idmap-*.json` after a real run.
+
+**Missing image sizes.** When the source is missing generated size
+variants (thumbnails referenced in `_wp_attachment_metadata` but not
+on disk — common after thumbnails were deleted), the media phase warns
+per attachment and the run's final log line prints the destination
+attachment IDs. Regenerate them on the destination from the copied
+originals with WP-CLI:
+
+```bash
+# from the destination folder (or add --path=...):
+wp media regenerate 2031 2037 2040
+# or, for a large list, regenerate everything:
+wp media regenerate
+```
+
+Files whose *original* is missing entirely cannot be regenerated —
+those are only reported, matching their state on the source.
 
 ## Development
 

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace MergeMultisite\Destination;
 
+use MergeMultisite\Db\Connection;
+
 /**
  * Builds the SQL needed to renumber a freshly-created WordPress
  * install's admin user away from ID 1.
@@ -80,12 +82,15 @@ final class AdminIdRenumberer {
 	 * Relaxes NO_ZERO_DATE in session sql_mode so MySQL 8.0 strict mode
 	 * does not reject ALTER TABLE with "1067 Invalid default value for
 	 * 'user_registered'" due to WordPress's legacy 0000-00-00 default.
+	 * (Connection applies the same statement on connect, so this is
+	 * belt-and-suspenders when the statements run through it, and
+	 * required when they are pasted into a separate client.)
 	 *
 	 * @return string[]
 	 */
 	public function buildDdlStatements( int $newId, string $tablePrefix ): array {
 		return array(
-			"SET SESSION sql_mode = REPLACE(REPLACE(@@sql_mode, 'NO_ZERO_DATE', ''), 'NO_ZERO_IN_DATE', '')",
+			Connection::WORDPRESS_SESSION_SQL_MODE,
 			sprintf( 'ALTER TABLE %susers AUTO_INCREMENT = %d', $tablePrefix, $newId + 1 ),
 		);
 	}

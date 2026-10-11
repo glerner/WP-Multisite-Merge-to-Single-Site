@@ -27,6 +27,19 @@ use PDOException;
  */
 final class Connection {
 
+	/**
+	 * MySQL session sql_mode applied right after connecting: strips
+	 * the zero-date modes WordPress itself never runs under. wpdb
+	 * removes NO_ZERO_DATE/NO_ZERO_IN_DATE (and more) from every WP
+	 * session; without this, a stock MySQL 8 strict sql_mode rejects
+	 * WP's legitimate '0000-00-00 00:00:00' values (draft
+	 * post_date_gmt/post_modified_gmt, user_registered,
+	 * comment_date_gmt) with error 1292 mid-migration. Strict modes
+	 * are kept so real data problems (truncation, bad values) still
+	 * surface as errors rather than silent corruption.
+	 */
+	public const WORDPRESS_SESSION_SQL_MODE = "SET SESSION sql_mode = REPLACE(REPLACE(@@sql_mode, 'NO_ZERO_DATE', ''), 'NO_ZERO_IN_DATE', '')";
+
 	private ?PDO $pdo = null;
 
 	public function __construct( public readonly DatabaseConfig $config ) {
@@ -92,6 +105,10 @@ final class Connection {
 					PDO::ATTR_EMULATE_PREPARES => false,
 					)
 				);
+
+				if ( $this->pdo->getAttribute( PDO::ATTR_DRIVER_NAME ) === 'mysql' ) {
+					$this->pdo->exec( self::WORDPRESS_SESSION_SQL_MODE );
+				}
 			} catch ( PDOException $exception ) {
 				throw new ConnectionException(
 					$this->connectionFailureMessage( $exception ),

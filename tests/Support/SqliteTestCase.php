@@ -151,6 +151,7 @@ abstract class SqliteTestCase extends TestCase {
 			sites: $merged['sites'],
 			pluginOptionRules: $merged['plugin_option_rules'],
 			termOverrides: $merged['term_overrides'],
+			authorMapping: $merged['author_mapping'] ?? array(),
 		);
 	}
 

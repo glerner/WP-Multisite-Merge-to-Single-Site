@@ -121,6 +121,10 @@ final class ConfigLoader {
 			pluginRoles: $pluginRoles,
 			detectorExtras: $detectorExtras,
 			divergentOptionExclusions: $divergentOptionExclusions,
+			authorMapping: array_map(
+				'strval',
+				is_array( $config['author_mapping'] ?? null ) ? $config['author_mapping'] : array()
+			),
 		);
 	}
 

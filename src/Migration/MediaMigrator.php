@@ -78,6 +78,7 @@ final class MediaMigrator {
 	 *     files_reused: int,
 	 *     files_renamed: int,
 	 *     files_missing: int,
+	 *     regenerate_ids: int[],
 	 *     warnings: string[],
 	 *     by_site: array<int, array{attachments: int}>
 	 * }
@@ -104,6 +105,7 @@ final class MediaMigrator {
 			'files_reused'         => 0,
 			'files_renamed'        => 0,
 			'files_missing'        => 0,
+			'regenerate_ids'       => array(),
 			'warnings'             => array(),
 			'by_site'              => array(),
 		);
@@ -162,10 +164,11 @@ final class MediaMigrator {
 					'path'     => $mainPath,
 				);
 
+				$missingVariants = array();
 				foreach ( $this->variantBasenames( (string) ( $meta['_wp_attachment_metadata'][0] ?? '' ) ) as $basename ) {
 					$variantPath = dirname( $mainPath ) . '/' . $basename;
 					if ( ! is_file( $variantPath ) ) {
-						$this->warn( $warnings, $logger, sprintf( 'Attachment %d (site %d): size variant missing on disk: %s', $postId, $site->blogId, dirname( $relative ) . '/' . $basename ) );
+						$missingVariants[] = $basename;
 						++$report['files_missing'];
 						continue;
 					}
@@ -176,6 +179,16 @@ final class MediaMigrator {
 						'path'     => $variantPath,
 					);
 				}
+
+				// One line per attachment, not per variant: missing
+				// generated sizes are common source drift (regenerable
+				// via `wp media regenerate`), and a popular image can
+				// have 8+ of them. Basenames stay in the message (and
+				// the report) so no file is dropped silently.
+				if ( $missingVariants !== array() ) {
+					$this->warn( $warnings, $logger, sprintf( 'Attachment %d (site %d): %d size variant(s) missing on disk under %s: %s', $postId, $site->blogId, count( $missingVariants ), dirname( $relative ), implode( ', ', $missingVariants ) ) );
+				}
+				$attachment['missing_variants'] = $missingVariants !== array();
 
 				foreach ( $attachment['files'] as $file ) {
 					$file['blog_id'] = $site->blogId;
@@ -298,6 +311,10 @@ final class MediaMigrator {
 					$idMap->set( 'attachment', $blogId, $postId, $newPostId );
 					$mapTable->record( $destination, 'attachment', $blogId, $postId, $newPostId );
 
+					if ( $attachment['missing_variants'] ?? false ) {
+						$report['regenerate_ids'][] = $newPostId;
+					}
+
 					++$report['attachments_migrated'];
 					$report['by_site'][ $blogId ]['attachments'] = ( $report['by_site'][ $blogId ]['attachments'] ?? 0 ) + 1;
 				}
@@ -329,6 +346,25 @@ final class MediaMigrator {
 				$report['files_missing']
 			)
 		);
+
+		// Missing size variants are regenerable on the DESTINATION from
+		// the copied original (never from a missing main file -- those
+		// are only listed in the report). Point the user at wp-cli.
+		if ( $report['regenerate_ids'] !== array() && ! $dryRun ) {
+			$ids = $report['regenerate_ids'];
+			$root = dirname( dirname( rtrim( $this->destinationUploadsPath, '/' ) ) );
+			$command = count( $ids ) <= 40
+				? sprintf( 'wp media regenerate %s', implode( ' ', $ids ) )
+				: sprintf( 'wp media regenerate (%d attachment(s); IDs in the report)', count( $ids ) );
+			$logger->info(
+				sprintf(
+					'%d attachment(s) have missing size variants on disk; regenerate them on the destination with: %s --path=%s (or `lando wp media regenerate` from the destination folder).',
+					count( $ids ),
+					$command,
+					$root
+				)
+			);
+		}
 
 		return $report;
 	}

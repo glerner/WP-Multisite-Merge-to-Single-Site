@@ -159,6 +159,19 @@ return array(
 	// 'main_site' => 1,
 
 	/*
+	 * Old-author redirection: old user_logins that should NOT be copied
+	 * as accounts -- their posts (and author references) are attributed
+	 * to the mapped destination user instead. The value is a destination
+	 * user_login, or the token 'admin' for the configured
+	 * admin_user_id. Handy when an old admin/editor account is redundant
+	 * with a destination user (e.g. after renaming the destination
+	 * admin's login). Unmapped authors still fall back to admin_user_id.
+	 */
+	// 'author_mapping' => array(
+	// 'old_admin_login' => 'admin',
+	// ),
+
+	/*
 	 * Spreadsheet output for bin/site-audit.php: 'xlsx' (default; falls
 	 * back to CSV when ext-zip is missing), 'csv', or 'both'. The JSON
 	 * dump and Markdown summary are always written.

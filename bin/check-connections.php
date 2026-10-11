@@ -7,7 +7,7 @@
  * simultaneously within the exact same PHP process.
  *
  * Usage:
- *   php bin/test-connections.php [--config=/path/to/config/dir]
+ *   php bin/check-connections.php [--config=/path/to/config/dir]
  *
  * @package MergeMultisite
  */

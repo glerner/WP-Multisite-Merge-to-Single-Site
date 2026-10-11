@@ -231,6 +231,24 @@ final class WpTestSchema {
 	}
 
 	/**
+	 * Insert a usermeta row, returning its umeta_id.
+	 *
+	 * @param array<string, mixed> $overrides
+	 */
+	public static function insertUserMeta( PDO $pdo, string $userMetaTable, array $overrides = array() ): int {
+		return self::insert(
+			$pdo,
+			$userMetaTable,
+			array(
+				'user_id'    => 0,
+				'meta_key'   => '',
+				'meta_value' => '',
+			),
+			$overrides
+		);
+	}
+
+	/**
 	 * Insert a comment row, returning its comment_ID.
 	 *
 	 * @param array<string, mixed> $overrides
