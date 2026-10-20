@@ -7,7 +7,7 @@ namespace MergeMultisite\Tests\Support;
 use PDO;
 
 /**
- * Builds minimal WordPress-shaped schemas on a throwaway PDO (CR-401).
+ * Builds minimal WordPress-shaped schemas on a throwaway PDO (docs/code-review-2026-10-03.md CR-401).
  *
  * The column sets mirror WordPress's real tables (so the shared
  * `src/Migration/` read-side SQL runs unmodified) but use SQLite

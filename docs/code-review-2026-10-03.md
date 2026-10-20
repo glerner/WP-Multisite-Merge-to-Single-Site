@@ -7,7 +7,7 @@
   `code-review-2026-09-28.md` review into completed work.
 - Date: 2026-10-03 (CR-401 resolved 2026-10-05)
 - Status counts: 4 Done (CR-401, CR-402, CR-403, CR-404),
-  3 Future ideas (CR-405, CR-406, CR-407)
+  4 Future ideas (CR-405, CR-406, CR-407, CR-408)
 
 ## Decisions / Constraints
 
@@ -253,6 +253,36 @@
     risks silently losing detail. Each converted section ships on its own
     and is re-readable immediately.
 
+- CR-408 — Status: Future idea · Priority: LOW
+  (added 2026-10-12)
+  - **Idea.** Filter out *unedited default pages* during the merge — pages
+    whose content is still the stock boilerplate every install generates.
+    Observed on the destination after merging: 8 Cart pages, 9 Checkout
+    pages, 9 Sample Pages, 8 My Account pages, 6+ About pages — one copy
+    per source subsite, all ending up in the front-end menu. Keeping
+    multiple genuinely-different About pages is fine (better than guessing
+    which one to keep), but a page that was never edited carries no
+    content and is pure menu noise.
+  - **Detection.** A page counts as "default" when its `post_content`
+    still matches the stock text: WP core's sample page ("This is an
+    example of a WordPress page…"), or plugin-generated stub pages whose
+    entire body is a single shortcode — `[woocommerce_cart]`,
+    `[woocommerce_checkout]`, `[woocommerce_my_account]`. Any edit at all
+    escapes the filter.
+  - **Keep-one rule.** Only drop a default when a non-default sibling
+    exists in the same group; if every copy is a default, keep one so the
+    feature still has its page. For WooCommerce, prefer keeping the page
+    the destination's `woocommerce_cart_page_id` /
+    `woocommerce_checkout_page_id` / `woocommerce_myaccount_page_id` /
+    `woocommerce_shop_page_id` options reference — dropping the referenced
+    page breaks the storefront even when the row is a duplicate. Menu
+    items are `nav_menu_item` posts pointing at the page via
+    `_menu_item_object_id`, so each dropped page also needs a decision on
+    its menu items: drop them, or repoint them at the kept copy.
+  - **Where it fits.** A needs-review group in `PostMigrator`, or a
+    post-merge audit check that reports the duplicates rather than
+    silently deleting — consistent with "never silently drop findings".
+
 ## Positive Observations
 
 - All DB-bound code routes through the single `Connection` wrapper, so the
@@ -263,3 +293,161 @@
   clauses), so SQLite fixtures exercise it unmodified. The only dialect
   problems found were `MigrationTable`'s DDL/`INSERT IGNORE` write path and
   the `WidgetInventory` LIKE-escape bug — both now fixed.
+
+---
+
+## Second pass — 2026-10-11 (commit 892edd3)
+
+## Summary
+
+- Scope: Commit 892edd3 ("Phase 4-5 fixes from real-data runs, destination
+  baseline snapshot/reset tool, media-filename audit, and author_mapping") —
+  reviewed for security, unclear variable/function names, and code that could
+  hide errors. Follows the review template in
+  wpwm-color-palette-generator/docs/code-review-prompt-template.md; the
+  WordPress-multisite and PHP checklists apply.
+- Date: 2026-10-11.
+- Status counts: 0 Done, 9 Pending (CR-501…CR-509), 0 In Progress,
+  0 Deferred, N/A (Positive Observations).
+
+## Decisions / Constraints
+
+- Project conventions (AGENTS.md): named arguments for any call with more
+  than ~4 parameters, or any call where same-type arguments could silently
+  swap (IDs, booleans, strings); `array(...)` syntax; docblocks on public
+  methods; verify with `composer test && composer phpcs && composer phpstan`.
+- CLI tools run outside WordPress; SQL is parameterized everywhere; reports
+  and state live under `var/`.
+- Migration and reset writes touch only `{prefix}*` tables; shell commands
+  built by `DestinationReset` escape every argument and pass the password via
+  `MYSQL_PWD`, never `--password`.
+
+## Confirmed Meanings in Code
+
+- site category = the per-site top-level category; IdMap key
+  `site_category` holds its destination `term_taxonomy_id`. Every post gets
+  it plus its original categories/tags, deduped on destination tt id
+  (`seen` set inside `PostMigrator::writeRelationships()`).
+- `regenerate_ids` (media report) = destination attachment IDs whose source
+  had missing size variants; consumed only for the `wp media regenerate`
+  hint in the final log line.
+- `aliased` (users report) = source users folded onto a destination user by
+  `author_mapping`; the old account is not copied, its ID maps via IdMap to
+  the target (destination user_login, or the `'admin'` token =
+  `admin_user_id`).
+- baseline = `var/state/destination-baseline.sql`, the byte-for-byte
+  destination starting state restored by `bin/reset-destination.php`.
+- `missing_variants` (attachment flag) = this attachment had at least one
+  metadata-referenced size variant absent on source disk (main file present).
+
+## Unified Action Checklist
+
+- **CR-501** — Status: Pending; Priority: MEDIUM.
+  Finding: `MediaFilenameReportWriter::appendSheet()` builds a fresh workbook
+  with `new Spreadsheet()` and then `createSheet()`, so when no
+  divergent-options xlsx exists yet the saved workbook has TWO sheets — an
+  empty default "Worksheet" plus "media-filenames". Verified empirically:
+  `new Spreadsheet()` + `createSheet()` yields "Worksheet, Worksheet 1".
+  Impact: empty stray tab in `integrity-*.xlsx` whenever media-filenames
+  findings exist without divergent-site-options findings; inconsistent with
+  `DivergentOptionsReportWriter`, which renames the default sheet.
+  Source refs: src/Report/MediaFilenameReportWriter.php:120-124.
+  What remains: use `$spreadsheet->getActiveSheet()->setTitle(...)` when
+  creating fresh (mirroring DivergentOptionsReportWriter:213-219), or
+  `removeSheetByIndex(0)` after `createSheet()`.
+- **CR-502** — Status: Pending; Priority: MEDIUM.
+  Finding: `bin/reset-destination.php --snapshot` warns when
+  `{prefix}merge_migration_map` exists but still truncates and overwrites
+  the baseline file. Impact: one accidental `--snapshot` after a migrate
+  run destroys the only known-good baseline (no backup), and every later
+  reset silently restores migrated state — the "fresh install" guarantee is
+  lost without any error. Source refs: bin/reset-destination.php:78-87.
+  What remains: refuse to overwrite an existing baseline when the migration
+  map table is present unless `--yes`/an explicit `--force` is passed.
+- **CR-503** — Status: Pending; Priority: MEDIUM.
+  Finding: `PostMigrator::writeRelationships()` is called with 8 positional
+  arguments, and the signature places adjacent same-type ints —
+  `$blogId` (int) then `$siteCategoryTtId` (?int). Impact: a transposed pair
+  compiles clean and silently mis-tags relationships — the exact class of
+  bug that bit this project on site 28, and what the project's named-args
+  convention exists to prevent. Source refs:
+  src/Migration/PostMigrator.php:242 (call), :613-621 (signature).
+  What remains: use named arguments at the call site.
+- **CR-504** — Status: Pending; Priority: MEDIUM.
+  Finding: `MediaFilenameSuggester::suggest()` is called with 4 positional
+  strings of the same type (filename, alt, caption, title). Impact: silent
+  swap risk — e.g. alt text treated as the filename — producing wrong
+  suggested names in the report with no error. Source refs:
+  src/Audit/Checks/MediaFilenameCheck.php:102; signature
+  src/Migration/MediaFilenameSuggester.php:1235.
+  What remains: named arguments at the call site.
+- **CR-505** — Status: Pending; Priority: LOW.
+  Finding: `fetchAttachmentContext()` and `usedAsFeaturedImage()` each take
+  two adjacent string table names (`$postsTable`, `$postMetaTable`) and are
+  called positionally. Impact: posts/postmeta swap would query the wrong
+  table; same-type-string risk per convention. Source refs:
+  src/Audit/Checks/MediaFilenameCheck.php:92, :124 (calls), :142, :182
+  (signatures). What remains: named arguments.
+- **CR-506** — Status: Pending; Priority: LOW.
+  Finding: `$attachment['missing_variants']` is set only on the main gather
+  path (MediaMigrator.php:191); the early paths (no `_wp_attached_file`,
+  main file missing, :143-157) leave it unset, and the consumer guards with
+  `?? false` at :314. Impact: safe today, but the shape inconsistency means
+  a future refactor that drops the `??` gets an undefined-array-key error
+  or a silently wrong regenerate list. What remains: initialize
+  `'missing_variants' => false` in the attachment array literal so every
+  path carries the flag.
+- **CR-507** — Status: Pending; Priority: LOW.
+  Finding: on a filename containing invalid UTF-8 bytes,
+  `preg_match('/[^\x00-\x7F]/u', ...)` returns `false` (not 0), silently
+  skipping the non-ASCII check, and `mb_strlen()` counts invalid bytes as
+  characters (verified: no exception, byte count returned). Impact:
+  corrupt-encoding filenames evade the non-ASCII flag and the 90-char cap is
+  byte-based for them — rare, cosmetic. Source refs:
+  src/Migration/MediaFilenameSuggester.php:1173-1175, :1217.
+  What remains: guard with `mb_check_encoding()` or drop `/u` and count
+  bytes deliberately; document the choice.
+- **CR-508** — Status: Pending; Priority: LOW.
+  Finding: `author_mapping` keys match `user_login` exactly
+  (UserMigrator.php:145), and an unresolvable target (login not on the
+  destination, or no `admin_user_id`) only logs a warning (:152) that never
+  reaches the run report. Impact: a typo'd or differently-cased key silently
+  migrates the account normally — correct fallback, but invisible in the
+  report's `aliased`/`conflicts` counts, so the user can't tell why the
+  mapping didn't apply. What remains: document exact-match/case-sensitive
+  semantics in config.sample.php; optionally surface unresolved targets in
+  the users report section.
+- **CR-509** — Status: Pending; Priority: LOW.
+  Finding: `MediaFilenameSuggester::suggest()` returns a `from` field
+  (`'filename'|'alt'|'caption'|'title'`), surfaced as the spreadsheet column
+  `suggested_from`. Impact: readability only — `from` is terse and the
+  column reads awkwardly. Source refs:
+  src/Migration/MediaFilenameSuggester.php:1263;
+  src/Report/MediaFilenameReportWriter.php:1633. What remains: rename to
+  `source` (column `suggested_source`) or keep and document.
+
+## Positive Observations (N/A)
+
+- Shell-command safety is consistent: `DestinationReset` escapes every
+  argument with `escapeshellarg()` (including DB-derived table names) and
+  carries the password via `MYSQL_PWD`, never `--password` on the command
+  line (src/Destination/DestinationReset.php:57-75, :1066-1076). The
+  command string itself is never logged.
+- The zero-date fix mirrors wpdb's own session behavior and deliberately
+  keeps strict modes, so real data problems still surface as errors rather
+  than silent truncation (src/Db/Connection.php:30-43, :105-109).
+- `MediaFilenameCheck`'s two-phase query loads title/caption/alt only for
+  flagged attachments (src/Audit/Checks/MediaFilenameCheck.php:61-90) —
+  clean attachments never pay for their full text.
+- The site-category dedup in `writeRelationships` counts the assignment even
+  when the insert is skipped, keeping the report honest and the outcome
+  correct (src/Migration/PostMigrator.php:638-644, documented in the
+  docblock).
+- `author_mapping` has no data-loss path: an unresolvable target warns and
+  migrates the account normally (src/Migration/UserMigrator.php:151-165).
+- `bin/reset-destination.php` fails fast on a missing baseline BEFORE
+  dropping any tables (bin/reset-destination.php:96-101) — destructive
+  paths are guarded.
+- New tests mirror production data shapes: network usermeta with serialized
+  capabilities, destination-prefix role keys, and map-table assertions
+  (tests/Integration/UserMigratorTest.php).

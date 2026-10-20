@@ -1,9 +1,10 @@
 # WordPress Multisite → Single Site Merge: Project Plan
 
-Status: **Phases 0–5 built** (integrity checker runs against the real
-source DB; 348 PHPUnit tests — unit + SQLite-backed integration —
-PHPCS + PHPStan clean). Phases 3–5 (`bin/migrate.php`: users → terms →
-media → posts) are implemented; Phase 6 (comments) is next.
+Status: **Phases 0–7 built** (integrity checker runs against the real
+source DB; 402 PHPUnit tests — unit + SQLite-backed integration —
+PHPCS + PHPStan clean). Phases 3–7 (`bin/migrate.php`: users → terms →
+media → posts → comments → menus/widgets → options) are implemented;
+Phase 8 (URL rewriting + redirect maps) is next.
 
 Location: `~/sites/merge-multisite` (standalone project).
 
@@ -108,11 +109,12 @@ merge-multisite/
 │   │   ├── CommentMigrator.php
 │   │   ├── MenuInventory.php      # nav_menu terms + items + _menu_item_* meta (shared w/ audit)
 │   │   ├── WidgetInventory.php    # sidebars_widgets + widget_% options model (shared w/ audit)
-│   │   ├── MenuMigrator.php       # nav menus + widgets (theme_mods/sidebars_widgets)
+│   │   ├── MenuMigrator.php       # nav menus + wp_navigation (inactive/orphaned data) + overview tree
+│   │   ├── WidgetMigrator.php     # widget_% instances + namespaced sidebars_widgets (inactive)
 │   │   ├── BlockAttributeRewriter.php # {"ref":id} block attrs remapped via IdMap
 │   │   ├── ContactPageCanonicalizer.php # contact slug detection + /contact/ mapping
 │   │   ├── GuidGenerator.php      # destination GUIDs (?p={id} posts, uploads URL attachments)
-│   │   ├── OptionsMigrator.php    # generic + per-plugin option/table handlers
+│   │   ├── OptionsMigrator.php    # generic options + per-plugin option rules (migrate-by-default)
 │   │   ├── UrlRewriter.php        # domain collapsing + internal-link rewriting
 │   │   └── RedirectMapBuilder.php # multi-format redirect export
 │   ├── Plugins/                   # Per-plugin adapters (Yoast SEO, etc.) — pluggable, optional
@@ -491,13 +493,36 @@ fixing the byte-length prefixes PHP's serialization format requires
   the account migrates normally — never silently dropped. PostMigrator
   needs no changes: it resolves authors through the same IdMap entry.
 
-### 7.4 Comments
-- Migrated with `comment_post_ID` and `user_id` rewritten via IdMap;
-  threaded replies (`comment_parent`) fixed in a second pass like
-  post_parent.
-- `commentmeta` migrated with the same `SerializedDataRewriter`.
+### 7.4 Comments (✅ implemented, Phase 6)
+- Migrated with `comment_post_ID` rewritten via the posts IdMap
+  (falling back to the attachments IdMap — comments can attach to
+  media) and registered `user_id` rewritten via the users IdMap;
+  guest comments (`user_id = 0`) copy unchanged. A comment whose post
+  did not migrate (excluded post type, trashed post, unmapped
+  attachment) is dropped and counted as `comments_post_unmapped` —
+  never inserted orphaned, never silent. An unmapped registered user
+  falls back to `user_id = 0` (the comment stays visible as a guest
+  with its author name/email intact) and is counted as
+  `user_id_fallback`.
+- Threaded replies (`comment_parent`) fixed in a second pass like
+  post_parent; a reply whose parent did not migrate (e.g. it was
+  spam) is left top-level (0) and counted as `parents_unresolved`.
+- Approval policy (confirmed 2026-10-16): `comment_approved` `'1'`
+  (approved) and `'0'` (pending) migrate; `spam` and `trash` are
+  discarded as non-content — counted as `spam_skipped`/`trash_skipped`,
+  never silent (same stance as trashed posts, §7.1). Any other
+  unexpected value is skipped and warned about once per site.
+- `commentmeta` migrated key-for-key through
+  `SerializedDataRewriter::rewriteAny()` (byte-length-safe);
+  serialized `comment_id`/`user_id` references (e.g. Akismet's
+  `akismet_history`) are remapped via the IdMaps; non-ID integers pass
+  through untouched. Deeper plugin-owned commentmeta rewriting is
+  Phase 7 adapter work, same as postmeta.
+- Destination `comment_count` needs no refresh: PostMigrator copies it
+  from the source, and WordPress only counts approved comments — the
+  exact set this phase migrates.
 
-### 7.5 Menus, widgets, and plugin settings/options
+### 7.5 Menus, widgets, and plugin settings/options (✅ implemented, Phase 7)
 
 **Menus.** WordPress core has no built-in way for one nav menu to
 include/nest another menu; that requires a plugin (e.g. *Menu In Menu*
@@ -876,12 +901,30 @@ blocking issues are found; `--strict` flag to also fail on warnings.
 - Structured logging (`var/logs/migrate-{timestamp}.log`) at
   info/warning/error levels; a final summary (counts per entity type,
   per site, elapsed time, warnings) printed to console and saved.
-- **Recommended workflow** : run the migration into a **local** destination WordPress install
-  first, verify the result thoroughly in the browser/admin, and only then
-  promote that verified database + uploads to production using your normal
-  tooling (a `.sql` export, or UpdraftPlus with its S3 connection) — this
-  tool intentionally stops at "correct local destination DB + files", not
-  production deployment.
+- **Post-migration to-do list** — every real (non-media-only) run
+  writes `var/reports/to-do-list.md` via `PostMigrationTodoWriter`.
+  It lists:
+  - the destination admin URL;
+  - the permalink-flush step (rewrite rules are runtime state and
+    don't migrate, so pretty URLs 404 until Settings → Permalinks is
+    saved once);
+  - the static-front-page step (the migrated front page's destination
+    post ID is captured from the source
+    `show_on_front`/`page_on_front`/`page_for_posts` values);
+  - the theme step;
+  - per-plugin install commands for the union of source-active
+    plugins (`--force`, with and without `--activate`);
+  - the locations of every report and log written this run.
+- **Recommended workflow**
+  - Run the migration into a **local** destination WordPress install
+    first.
+  - Verify the result thoroughly in the browser/admin.
+  - Only then promote that verified database + uploads to production
+    using your normal tooling (a `.sql` export, or UpdraftPlus with
+    its Amazon S3 connection).
+  - This tool intentionally stops at "correct local destination DB +
+    files".
+  - Production deployment is not its job.
 
 ## 11. Testing & code quality
 
@@ -931,17 +974,61 @@ blocking issues are found; `--strict` flag to also fail on warnings.
    (docs/code-review-2026-10-03.md — CR-401) covering the end-to-end
    DB + filesystem paths.
 6. **Phase 5** — Posts/pages/CPTs + postmeta + parent-fixups + contact
-   page canonicalization. ✅ Implemented: `PostMigrator` — slug
-   dedup (`-2`/`-3`), `/contact/` canonicalization, block-attribute ID
-   remapping (`wp:image` id, `wp:gallery` ids, `wp:navigation` ref),
-   `_thumbnail_id` remap, term relationships + per-site
-   `term_taxonomy.count` refresh, two-pass parent fixups, trash
-   discarded (`trash_skipped` in report), scheduled posts listed in
-   `future_posts`, dry-run + resume. Unit + SQLite-backed integration
-   tests.
-7. **Phase 6** — Comments.
-8. **Phase 7** — Menus/widgets (as orphaned data + tree-view report) +
-   generic options + plugin adapters.
+   page canonicalization. ✅ Implemented: `PostMigrator`.
+   - Slug dedup (`-2`/`-3`).
+   - `/contact/` canonicalization.
+   - Block-attribute ID remapping:
+     - `wp:image` id;
+     - `wp:gallery` ids;
+     - `wp:navigation` ref.
+   - `_thumbnail_id` remap.
+   - Term relationships + per-site `term_taxonomy.count` refresh.
+   - Two-pass parent fixups.
+   - Trash discarded (`trash_skipped` in report).
+   - Scheduled posts listed in `future_posts`.
+   - Dry-run and resume supported.
+   - Unit + SQLite-backed integration tests.
+7. **Phase 6** — Comments. ✅ Implemented: `CommentMigrator`.
+   - `comment_post_ID`, `user_id`, and `comment_parent` are rewritten
+     through the IdMap.
+   - Threaded replies are fixed in a second pass, like post_parent.
+   - Approval policy:
+     - approved (`1`) and pending (`0`) comments migrate;
+     - spam and trash are discarded and counted, never silent.
+   - Comments on unmigrated posts are dropped and counted.
+   - Serialized commentmeta is rewritten byte-length-safe.
+     - Akismet `comment_id`/`user_id` references are remapped.
+     - Non-ID integers are left untouched.
+   - Dry-run and resume are supported.
+   - Unit + SQLite-backed integration tests.
+8. **Phase 7** — Menus, widgets, and generic options. ✅ Implemented.
+   - `MenuMigrator` — menus as inactive/orphaned data:
+     - nav_menu terms + nav_menu_item posts + wp_navigation block
+       menus;
+     - `_menu_item_object_id` remapped by type via IdMap;
+     - two-pass item parent fixups;
+     - term relationships + counts;
+     - menus-overview.md/.json tree report via
+       `MenuOverviewReportWriter`.
+   - `WidgetMigrator` — classic widgets as inactive data:
+     - `widget_{type}` instances copied with cross-site renumbering;
+     - the Navigation Menu widget's nav_menu term id remapped;
+     - `sidebars_widgets` namespaced per site as
+       `site{blogId}_{sidebar}` inactive areas;
+     - the destination's own areas preserved.
+   - `OptionsMigrator` — migrate-by-default:
+     - built-in never-migrate list;
+     - per-site option-keys.php rules, incl. include_partial
+       sub-key stripping;
+     - main_site/lowest-blog conflict resolution, every divergence
+       reported;
+     - `site_icon`/`default_category` ID remapping;
+     - sensitive-name flagging;
+     - active_plugins union report;
+     - needs_adapter reporting.
+   - No `src/Plugins/` adapter was needed.
+     - The only needs_adapter candidate (Pods) was confirmed unused.
+   - Unit + SQLite-backed integration tests.
 9. **Phase 8** — URL rewriting (domain collapsing) + redirect map (all
    6 formats).
 10. **Phase 9** — Full dry-run against your real data, review reports
@@ -1046,5 +1133,6 @@ default I'll build if you don't weigh in further:
 
 ---
 
-**Next step:** Phase 6 (Comments) — Phases 0–5 are built and verified
-against the real source DB.
+**Next step:** Phase 8 (URL rewriting: domain collapsing + redirect
+maps, all 6 formats) — Phases 0–7 are built and verified against the
+real source DB.

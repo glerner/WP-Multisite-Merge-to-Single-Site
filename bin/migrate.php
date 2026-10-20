@@ -3,9 +3,10 @@
 
 /**
  * Migration entry point. Runs the implemented phases in dependency
- * order (PLAN.md §5): Users, Terms, Media, then Posts/pages/CPTs.
- * Phases 6-8 (comments, menus/widgets, URL rewriting) are not built
- * yet and will be appended here as they land.
+ * order (PLAN.md §5): Users, Terms, Media, Posts/pages/CPTs,
+ * Comments (+ commentmeta), Menus (+ widgets), then generic Options
+ * (+ per-plugin option rules). Phase 8 (URL rewriting) is not built
+ * yet and will be appended here as it lands.
  *
  * Usage:
  *   php bin/migrate.php --move-media-only [--dry-run] [--site=<blog_id>]
@@ -46,15 +47,21 @@ use MergeMultisite\Config\ConfigException;
 use MergeMultisite\Config\ConfigLoader;
 use MergeMultisite\Db\Connection;
 use MergeMultisite\Db\ConnectionException;
+use MergeMultisite\Migration\CommentMigrator;
 use MergeMultisite\Migration\IdMap;
 use MergeMultisite\Migration\MediaMigrator;
+use MergeMultisite\Migration\MenuMigrator;
 use MergeMultisite\Migration\MigrationTable;
+use MergeMultisite\Migration\OptionsMigrator;
 use MergeMultisite\Migration\PostMigrator;
 use MergeMultisite\Migration\Site;
 use MergeMultisite\Migration\SiteSelector;
 use MergeMultisite\Migration\TermMigrator;
 use MergeMultisite\Migration\UploadsPathResolver;
 use MergeMultisite\Migration\UserMigrator;
+use MergeMultisite\Migration\WidgetMigrator;
+use MergeMultisite\Report\MenuOverviewReportWriter;
+use MergeMultisite\Report\PostMigrationTodoWriter;
 use MergeMultisite\Support\CliArguments;
 use MergeMultisite\Support\Logger;
 
@@ -65,7 +72,8 @@ $configDir = $args->get( 'config', $projectRoot . '/config' );
 $dryRun = $args->has( 'dry-run' );
 $mediaOnly = $args->has( 'move-media-only' );
 
-$logger = new Logger( 'info', $projectRoot . '/var/logs/migrate-' . date( 'Ymd-His' ) . '.log' );
+$logPath = $projectRoot . '/var/logs/migrate-' . date( 'Ymd-His' ) . '.log';
+$logger = new Logger( 'info', $logPath );
 
 try {
 	$config = ( new ConfigLoader( $configDir ) )->load();
@@ -136,6 +144,10 @@ try {
 
 	if ( ! $mediaOnly ) {
 		$reports['posts'] = ( new PostMigrator() )->migrate( $source, $destination, $config, $sites, $idMap, $mapTable, $dryRun, $logger );
+		$reports['comments'] = ( new CommentMigrator() )->migrate( $source, $destination, $config, $sites, $idMap, $mapTable, $dryRun, $logger );
+		$reports['menus'] = ( new MenuMigrator() )->migrate( $source, $destination, $config, $sites, $idMap, $mapTable, $dryRun, $logger );
+		$reports['widgets'] = ( new WidgetMigrator() )->migrate( $source, $destination, $config, $sites, $idMap, $mapTable, $dryRun, $logger );
+		$reports['options'] = ( new OptionsMigrator() )->migrate( $source, $destination, $config, $sites, $idMap, $mapTable, $dryRun, $logger );
 	}
 
 	if ( ! $dryRun ) {
@@ -169,6 +181,35 @@ try {
 			JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES
 		)
 	);
+
+	// The menus-overview reference (§7.5) is written next to the run
+	// report whenever the menu phase ran.
+	$overviewPaths = array();
+	if ( isset( $reports['menus']['overview'] ) && $reports['menus']['overview'] !== array() ) {
+		foreach ( ( new MenuOverviewReportWriter() )->writeAll( $reports['menus']['overview'], $reportDir ) as $name ) {
+			$overviewPaths[] = $reportDir . '/' . $name;
+		}
+	}
+
+	// The post-migration to-do list turns the run's decisions into
+	// the destination-side steps the user must still do (§10).
+	if ( isset( $reports['options'] ) && ! $mediaOnly ) {
+		$reportPaths = array( $reportPath );
+		$reportPaths = array_merge( $reportPaths, $overviewPaths );
+
+		( new PostMigrationTodoWriter() )->writeAll(
+			array(
+				'generated_at'         => date( 'Y-m-d H:i:s' ),
+				'destination_admin_url' => rtrim( $config->destinationUrl, '/' ) . '/wp-admin/',
+				'login_note'           => 'Log in with the destination admin account you created (the same login as your source admin).',
+				'front_page'           => $reports['options']['front_page'] ?? null,
+				'active_plugins_union' => $reports['options']['active_plugins_union'],
+				'report_paths'         => $reportPaths,
+				'log_path'             => $logPath,
+			),
+			$reportDir
+		);
+	}
 
 	$logger->info( sprintf( 'Migration run complete%s; report: %s', $dryRun ? ' (dry run)' : '', $reportPath ) );
 } catch ( \Throwable $exception ) {

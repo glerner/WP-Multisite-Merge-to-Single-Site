@@ -11,7 +11,7 @@ use MergeMultisite\Tests\Support\WpTestSchema;
 use PHPUnit\Framework\Attributes\CoversClass;
 
 /**
- * CR-401: PostQueryHelper::fetchMetaForPosts() against a real (SQLite)
+ * In docs/code-review-2026-10-03.md CR-401: PostQueryHelper::fetchMetaForPosts() against a real (SQLite)
  * database — the postmeta shape WordPress actually uses
  * (`meta_key => value[]`) and the 5000-id IN() chunking boundary that
  * keeps queries under MySQL's 65535 prepared-statement limit.

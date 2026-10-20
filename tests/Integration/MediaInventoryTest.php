@@ -13,7 +13,7 @@ use MergeMultisite\Tests\Support\WpTestSchema;
 use PHPUnit\Framework\Attributes\CoversClass;
 
 /**
- * CR-401: MediaInventory::collect()/fingerprints() against a real
+ * In docs/code-review-2026-10-03.md CR-401: MediaInventory::collect()/fingerprints() against a real
  * (SQLite) database and a real temp uploads tree, so the JOIN, the
  * per-layout path resolution, and the found/missing split are all
  * exercised as the audit/migration pipeline uses them.

@@ -11,7 +11,7 @@ use PDO;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Base class for SQLite-backed tests of DB-bound classes (CR-401).
+ * Base class for SQLite-backed tests of DB-bound classes (docs/code-review-2026-10-03.md CR-401).
  *
  * Every test here creates and owns its own in-memory database — the
  * configured Source/Destination databases are never touched. If the
@@ -151,7 +151,9 @@ abstract class SqliteTestCase extends TestCase {
 			sites: $merged['sites'],
 			pluginOptionRules: $merged['plugin_option_rules'],
 			termOverrides: $merged['term_overrides'],
+			mainSite: $merged['main_site'] ?? null,
 			authorMapping: $merged['author_mapping'] ?? array(),
+			pluginRoles: $merged['plugin_roles'] ?? array(),
 		);
 	}
 

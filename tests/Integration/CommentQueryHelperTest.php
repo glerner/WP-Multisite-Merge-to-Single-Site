@@ -11,7 +11,7 @@ use MergeMultisite\Tests\Support\WpTestSchema;
 use PHPUnit\Framework\Attributes\CoversClass;
 
 /**
- * CR-401: CommentQueryHelper against a real (SQLite) database —
+ * In docs/code-review-2026-10-03.md CR-401: CommentQueryHelper against a real (SQLite) database —
  * keyset batch boundaries (no OFFSET, no skipped or duplicated rows)
  * and commentmeta IN()-chunking past MySQL's 5000-id chunk size.
  *

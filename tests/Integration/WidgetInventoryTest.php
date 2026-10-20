@@ -11,7 +11,7 @@ use MergeMultisite\Tests\Support\WpTestSchema;
 use PHPUnit\Framework\Attributes\CoversClass;
 
 /**
- * CR-401: WidgetInventory::collect() against a real (SQLite) database —
+ * In docs/code-review-2026-10-03.md CR-401: WidgetInventory::collect() against a real (SQLite) database —
  * unserializes `sidebars_widgets` + every `widget_%` option row the way
  * the audit and the future MenuMigrator consume them, including the
  * corrupt-value paths.

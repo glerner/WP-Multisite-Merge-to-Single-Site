@@ -11,7 +11,7 @@
  * a new content signal -- nothing needs to be copied here just to keep
  * working; prefix a family slug with '-' to remove a built-in.
  *
- * Five optional sections:
+ * Five optional sections plus 'premium_plugins':
  *
  * 1. 'conflict_families'
  *   family-label => list of installed-plugin directory slugs. A family is
@@ -54,6 +54,14 @@
  *   "suppressions", plus a 'check-name' => slug[] shorthand) -- keeps all
  *   plugin configuration in one file; general, non-plugin rules stay in
  *   config.php. Both are merged.
+ *
+ * 6. 'premium_plugins'
+ *   Flat list of plugin directory slugs installed from somewhere other
+ *   than the wordpress.org plugin directory on purpose -- premium
+ *   plugins (e.g. 'wpforms', 'gravityforms') or in-house code. The
+ *   audit's plugin-repo check flags every installed/active slug it can
+ *   not find in the wp.org directory; listing a slug here silences it.
+ *   Must-use plugins never need listing (they are skipped entirely).
  *
  *   HOW TO CONVERT SPREADSHEET BLOCKS TO CONTENT SIGNATURES:
  *     In the site-audit spreadsheet, the "blocks" column displays block identifiers
@@ -144,5 +152,13 @@ return array(
 				'Spectra Form' => array( 'wp:uagb\/forms\b', 'uagb/forms' ),
 			),
 		),
+	),
+
+	'premium_plugins'   => array(
+		// Directory slugs intentionally NOT in the wordpress.org
+		// directory (premium or custom code). Listed here so the
+		// plugin-repo audit check treats them as known:
+		// 'wpforms',
+		// 'gravityforms',
 	),
 );

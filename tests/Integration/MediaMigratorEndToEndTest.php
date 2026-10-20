@@ -16,7 +16,7 @@ use MergeMultisite\Tests\Support\WpTestSchema;
 use PHPUnit\Framework\Attributes\CoversClass;
 
 /**
- * CR-401: MediaMigrator's execution paths (the Phase 4 DB + filesystem
+ * In docs/code-review-2026-10-03.md CR-401: MediaMigrator's execution paths (the Phase 4 DB + filesystem
  * side that pure unit tests cannot reach) run end-to-end against
  * SQLite fixtures + real temp directories: cross-site collision
  * renames with their thumbnail variants, hash dedup to one physical

@@ -108,7 +108,7 @@ try {
 	$destUsers = $config->destination->tablePrefix . 'users';
 	if ( $destination->tableExists( $destUsers ) ) {
 		$users = $destination->fetchAll( sprintf( 'SELECT ID, user_login, user_email FROM %s LIMIT 5', $destUsers ) );
-		printf( "    ✓ Found %d user(s) in '%s':\n", count( $users ), $destUsers );
+		printf( "    ✓ Found %d user(s) in '%s' (limit 5 checked):\n", count( $users ), $destUsers );
 		foreach ( $users as $u ) {
 			printf( "      - ID %d: %s <%s>\n", (int) $u['ID'], (string) $u['user_login'], (string) $u['user_email'] );
 		}

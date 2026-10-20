@@ -96,29 +96,45 @@ so real data problems still surface as errors.
 
 ## Audit pipeline (`src/Audit/`)
 
-`AuditRunner` runs each `AuditCheckInterface` check → `AuditFinding` list →
-`SuppressionFilter` applies `suppressions` from config.php + plugin-roles.php
-(merged; never silently — emits an
-`audit.suppressed` summary finding) → `AuditReportWriter` renders Markdown +
-JSON.
+Flow: `AuditRunner` runs each `AuditCheckInterface` check →
+`AuditFinding` list → `SuppressionFilter` applies `suppressions` from
+config.php + plugin-roles.php (merged; a suppressed finding emits an
+`audit.suppressed` summary, never dropped silently) →
+`AuditReportWriter` renders Markdown + JSON.
 
-Checks in `src/Audit/Checks/`: `MediaFileCheck` (missing files, name/content
-collisions), `OrphanedMediaFileCheck` (files with no attachment post),
-`OrphanedMetaCheck`, `OrphanedPostAuthorCheck`, `OrphanedPostParentCheck`,
-`PluginDataCheck` (option-keys rules vs. real data; delegates footprint
-probing to `PluginFootprintDetector`), `MenuWidgetIntegrityCheck`,
-`UserConflictCheck`, `TermCaseCollisionCheck` (previews `TermMergeResolver`),
-`TemplateSlugCollisionCheck` (same-slug wp_template/wp_template_part across
-sites; `main_site` wins), `DivergentSiteOptionCheck` (autoloaded options that
-differ across sites; Markdown shows 50, the uncapped option/value/site map
-rides the `.truncated` finding's context into the `divergent-options` tab of
-`integrity-*.xlsx`),
-`ContactPageDiscoveryCheck`, `PodsDetectionCheck`,
-`MalwareIndicatorCheck` (backed by pure `MalwareHeuristics`),
-`MediaFilenameCheck` (problematic filename characters — non-ASCII,
-spaces, Windows-illegal, length — with suggested safe names via
-`MediaFilenameSuggester`, plus alt/caption/title/where-used context
-for the `media-filenames` xlsx tab).
+Checks in `src/Audit/Checks/`:
+
+- `MediaFileCheck` — missing files; name/content collisions.
+- `OrphanedMediaFileCheck` — files with no attachment post.
+- `OrphanedMetaCheck`
+- `OrphanedPostAuthorCheck`
+- `OrphanedPostParentCheck`
+- `PluginDataCheck` — option-keys rules vs. real data.
+  - Footprint probing is delegated to `PluginFootprintDetector`.
+- `PluginRepoCheck` — installed ∪ DB-active plugin slugs vs. the
+  wordpress.org directory.
+  - `plugin_information` API per slug; HTTP 404 = absent.
+  - `premium_plugins` allowlist (plugin-roles.php) stays silent.
+  - Injectable lookup keeps tests offline.
+  - Offline/transport failure → `plugin-repo.skipped` info finding.
+- `MenuWidgetIntegrityCheck`
+- `UserConflictCheck`
+- `TermCaseCollisionCheck` — previews `TermMergeResolver`.
+- `TemplateSlugCollisionCheck` — same-slug wp_template/wp_template_part
+  across sites; `main_site` wins.
+- `DivergentSiteOptionCheck` — autoloaded options that differ across
+  sites.
+  - Markdown shows 50; the uncapped option/value/site map rides the
+    `.truncated` finding's context into the `divergent-options` tab of
+    `integrity-*.xlsx`.
+- `ContactPageDiscoveryCheck`
+- `PodsDetectionCheck`
+- `MalwareIndicatorCheck` — backed by pure `MalwareHeuristics`.
+- `MediaFilenameCheck` — problematic filename characters (non-ASCII,
+  spaces, Windows-illegal, length).
+  - Suggested safe names via `MediaFilenameSuggester`.
+  - Alt/caption/title/where-used context feeds the `media-filenames`
+    xlsx tab.
 
 ## Content audit pipeline (`src/ContentAudit/`)
 
@@ -251,6 +267,69 @@ security, backups, page builders).
   `ContentAuditRow.path` → accurate `original_url`.
 - `CommentQueryHelper` — keyset-paginated comment batches +
   chunked `commentmeta` fetching (mirrors `PostQueryHelper`).
+- `CommentMigrator` — Phase 6 (§7.4): copies comments + commentmeta.
+  - `comment_post_ID` resolves through the posts IdMap.
+    Attachments are the fallback.
+  - Registered `user_id` resolves through the users IdMap.
+    Unmapped users fall back to guest 0, counted.
+  - Threaded `comment_parent` is fixed in a per-site second pass,
+    like `PostMigrator`'s post_parent.
+  - Approval policy:
+    - approved (`'1'`) and pending (`'0'`) migrate;
+    - spam and trash are discarded and counted
+      (`spam_skipped`/`trash_skipped`), never silent;
+    - comments on unmigrated posts are dropped and counted
+      (`comments_post_unmapped`).
+  - Commentmeta copies through `SerializedDataRewriter::rewriteAny()`.
+    Serialized `comment_id`/`user_id` references (Akismet
+    `akismet_history`) are remapped.
+    Non-ID integers are left untouched.
+  - Idempotent via 'comment' entries in IdMap/MigrationTable.
+- `MenuMigrator` — Phase 7 (§7.5): copies nav menus as DATA.
+  - Menus arrive as nav_menu terms + nav_menu_item posts +
+    wp_navigation block menus.
+  - They are deliberately not assigned to any theme location.
+  - `_menu_item_object_id` is remapped by type.
+    post_type resolves through the posts/attachments IdMaps.
+    taxonomy resolves through the terms IdMap.
+  - `_menu_item_menu_item_parent` is fixed in a per-site second pass.
+  - nav_menu term relationships and counts are written.
+  - wp_navigation `ref`/`id`/`ids` block attributes go through
+    `BlockAttributeRewriter`.
+  - The report carries an `overview` tree (labels, targets, nesting
+    per site) for `MenuOverviewReportWriter`.
+  - Idempotent via 'nav_menu', 'nav_menu_taxonomy', 'menu_item', and
+    'wp_navigation' entries.
+- `WidgetMigrator` — Phase 7 (§7.5): copies classic widget storage as
+  inactive/orphaned data.
+  - `widget_{type}` instances are renumbered past the destination's
+    current max per type.
+    Cross-site collisions are avoided.
+    The destination's own widgets are preserved.
+  - The Navigation Menu widget's `nav_menu` term id is remapped via
+    IdMap.
+  - `sidebars_widgets` gains one namespaced area per source sidebar
+    (`site{blogId}_{sidebarId}`, incl. the source's
+    `wp_inactive_widgets`).
+    Destination areas stay untouched.
+  - Corrupt sidebars skip the site and are reported.
+  - Idempotent via 'widget' and 'sidebars_widgets' entries.
+- `OptionsMigrator` — Phase 7 (§7.5): migrate-by-default for every
+  `wp_options` row.
+  - Built-in never-migrate list: destination identity, install state,
+    runtime/transients, filesystem paths, and options owned by other
+    phases (widgets, active_plugins union, theme/front-page decisions,
+    `{prefix}user_roles`).
+  - option-keys.php rules: exclude, include_partial sub-key
+    stripping, exclude_option_keys, needs_adapter reporting.
+  - Cross-site conflict resolution: main_site wins, else lowest
+    blog_id.
+    Identical values are merged.
+    Every divergence is recorded.
+  - `site_icon`/`default_category` IDs are remapped.
+  - Sensitive-named options and sub-keys are flagged.
+    They still migrate, never silent.
+  - Idempotent via 'option' entries (site ID 0, keyed by option name).
 - `ContactPageCanonicalizer` — shared "contact" slug detection
   (`isContactLike()`/`candidateClause()`) + variant→`/contact/` mapping
   (`isVariant()`/`canonicalPath()`); used by `ContactPageDiscoveryCheck`.
@@ -321,6 +400,26 @@ security, backups, page builders).
   wrapped lines per cell and fixes the row height only when content
   would exceed the cap; applied by both report writers on every
   worksheet.
+- `MenuOverviewReportWriter` — renders MenuMigrator's `overview` data
+  into `menus-overview.md` (indented tree) and `menus-overview.json`.
+  The overview holds per-site menus: labels, targets, nesting, and
+  source IDs.
+  It is the §7.5 manual-rebuild reference.
+  Pure formatting.
+  `tree()` builds the parent/child nesting sorted by menu_order.
+- `PostMigrationTodoWriter` — renders the run's decisions into
+  `var/reports/to-do-list.md` (PLAN.md §10).
+  - Destination admin URL.
+  - Permalink-flush step.
+  - Static-front-page step.
+    The migrated front page's destination post ID comes from the
+    options report's `front_page`.
+  - Theme step.
+  - Per-plugin install commands for `active_plugins_union`:
+    `wp plugin install <slug> --force` and
+    `wp plugin install <slug> --force --activate`.
+  - Paths of every report and log written this run.
+  Pure formatting, unit-tested.
 
 ## Support (`src/Support/`)
 
@@ -344,12 +443,32 @@ network `users`/`usermeta`/`blogs`/`sitemeta`) on `new PDO('sqlite::memory:')`
 with row-insert helpers, and `SqliteTestCase` skips cleanly when pdo_sqlite
 is absent while providing connection/config factories.
 
-`tests/Integration/` exercises the DB-bound classes against those fixtures
-(they never touch configured Source/Destination databases): inventory
-queries (`MediaInventory`, `MenuInventory`, `WidgetInventory::collect`),
-chunked meta fetching (`PostQueryHelper`, `CommentQueryHelper`, including
-the 5000-id IN() boundary), `MigrationTable` (dialect-split DDL +
-`INSERT OR IGNORE` idempotency), `MediaMigrator` end-to-end (collision
-renames + variants, hash dedup, dry-run, resume), and `PostMigrator`
-end-to-end (slug dedup, contact canonicalization, `_thumbnail_id`/block
-remapping, parent fixups, term counts, trash/future, dry-run, resume).
+`tests/Integration/` exercises the DB-bound classes against those
+fixtures (they never touch configured Source/Destination databases).
+Covered end-to-end:
+- inventory queries: `MediaInventory`, `MenuInventory`,
+  `WidgetInventory::collect`;
+- chunked meta fetching: `PostQueryHelper`, `CommentQueryHelper`,
+  incl. the 5000-id IN() boundary;
+- `MigrationTable`: dialect-split DDL + `INSERT OR IGNORE`
+  idempotency;
+- `MediaMigrator`: collision renames + variants, hash dedup, dry-run,
+  resume;
+- `PostMigrator`: slug dedup, contact canonicalization,
+  `_thumbnail_id`/block remapping, parent fixups, term counts,
+  trash/future, dry-run, resume;
+- `CommentMigrator`: post/user/parent IdMap remapping, threaded
+  second-pass fixups, spam/trash discard + counts, comments on
+  unmigrated posts dropped + counted, serialized commentmeta
+  rewriting, dry-run, resume;
+- `MenuMigrator`: nav_menu terms, item target remapping by type,
+  second-pass item parents, orphaned items, wp_navigation block refs,
+  trash discard, overview tree, dry-run, resume;
+- `WidgetMigrator`: cross-site instance renumbering, nav_menu widget
+  term remap, namespaced sidebars, corrupt-data skip, dry-run, resume;
+- `OptionsMigrator`: migrate-by-default, built-in + rule exclusions,
+  include_partial stripping, conflict resolution incl. main_site, ID
+  remapping, sensitive flagging, destination upsert, dry-run, resume.
+
+`MenuOverviewReportWriter`'s tree building and Markdown rendering are
+unit-tested.

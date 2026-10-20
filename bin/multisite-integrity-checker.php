@@ -46,6 +46,7 @@ use MergeMultisite\Audit\Checks\OrphanedMetaCheck;
 use MergeMultisite\Audit\Checks\OrphanedPostAuthorCheck;
 use MergeMultisite\Audit\Checks\OrphanedPostParentCheck;
 use MergeMultisite\Audit\Checks\PluginDataCheck;
+use MergeMultisite\Audit\Checks\PluginRepoCheck;
 use MergeMultisite\Audit\Checks\PodsDetectionCheck;
 use MergeMultisite\Audit\Checks\TemplateSlugCollisionCheck;
 use MergeMultisite\Audit\Checks\TermCaseCollisionCheck;
@@ -127,6 +128,7 @@ $checks = array(
 	new TermCaseCollisionCheck( new TermMergeResolver( $config->mainSite ) ),
 	new TemplateSlugCollisionCheck(),
 	new PluginDataCheck(),
+	new PluginRepoCheck(),
 	new PodsDetectionCheck(),
 	new MenuWidgetIntegrityCheck(),
 	new ContactPageDiscoveryCheck(),

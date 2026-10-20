@@ -11,7 +11,7 @@ use MergeMultisite\Tests\Support\SqliteTestCase;
 use PHPUnit\Framework\Attributes\CoversClass;
 
 /**
- * CR-401: MigrationTable on SQLite — the dialect-split DDL, the
+ * In docs/code-review-2026-10-03.md CR-401: MigrationTable on SQLite — the dialect-split DDL, the
  * INSERT OR IGNORE idempotency path (the MySQL-only write-side of the
  * migration map), and resume prewarming. This is the first coverage
  * of any write-path SQL in the project.

@@ -11,7 +11,7 @@ use MergeMultisite\Tests\Support\WpTestSchema;
 use PHPUnit\Framework\Attributes\CoversClass;
 
 /**
- * CR-401: MenuInventory::collect() against a real (SQLite) database —
+ * In docs/code-review-2026-10-03.md CR-401: MenuInventory::collect() against a real (SQLite) database —
  * exercises the terms/taxonomy JOIN, the `_menu_item_*` meta LEFT
  * JOINs, and the correlated subquery that resolves an item's nav_menu
  * without duplicating rows.
