@@ -12,7 +12,7 @@
  * candidates, not screenshotted.
  *
  * Usage:
- *   php bin/template-screenshots.php [--config=/path/to/config/dir] [--site=<blog_id>] [--dry-run]
+ *   php bin/template-screenshots.php [--config=/path/to/config/dir] [--site=<blog_id>] [--dry-run] [--help]
  *
  * Options:
  *   --config    Directory containing config.php/sites.php/etc. Defaults to ../config.
@@ -24,7 +24,7 @@
 
 declare(strict_types=1);
 
-require_once dirname( __DIR__ ) . '/vendor/autoload.php';
+require_once __DIR__ . '/bootstrap.php';
 
 use MergeMultisite\Config\ConfigException;
 use MergeMultisite\Config\ConfigLoader;
@@ -35,10 +35,18 @@ use MergeMultisite\Migration\TemplateContextCollector;
 use MergeMultisite\Migration\TemplateInventory;
 use MergeMultisite\Migration\TemplateShotPlan;
 use MergeMultisite\Support\CliArguments;
+use MergeMultisite\Support\CliUsage;
 use MergeMultisite\Support\Logger;
 
 $projectRoot = dirname( __DIR__ );
 $args = new CliArguments( $argv );
+
+if ( $args->has( 'help' ) ) {
+	CliUsage::printFileDocblock( __FILE__ );
+	exit( 0 );
+}
+
+CliUsage::printUsage( __FILE__ );
 
 $configDir = $args->get( 'config', $projectRoot . '/config' );
 $logger = new Logger( 'info', $projectRoot . '/var/logs/template-screenshots-' . date( 'Ymd-His' ) . '.log' );

@@ -7,23 +7,31 @@
  * simultaneously within the exact same PHP process.
  *
  * Usage:
- *   php bin/check-connections.php [--config=/path/to/config/dir]
+ *   php bin/check-connections.php [--config=/path/to/config/dir] [--help]
  *
  * @package MergeMultisite
  */
 
 declare(strict_types=1);
 
-require_once dirname( __DIR__ ) . '/vendor/autoload.php';
+require_once __DIR__ . '/bootstrap.php';
 
 use MergeMultisite\Config\ConfigException;
 use MergeMultisite\Config\ConfigLoader;
 use MergeMultisite\Db\Connection;
 use MergeMultisite\Db\ConnectionException;
 use MergeMultisite\Support\CliArguments;
+use MergeMultisite\Support\CliUsage;
 
 $projectRoot = dirname( __DIR__ );
 $args        = new CliArguments( $argv );
+
+if ( $args->has( 'help' ) ) {
+	CliUsage::printFileDocblock( __FILE__ );
+	exit( 0 );
+}
+
+CliUsage::printUsage( __FILE__ );
 $configDir   = $args->get( 'config', $projectRoot . '/config' );
 
 echo "=== Merge Multisite: Database Connection Verification ===\n\n";

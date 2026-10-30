@@ -5,7 +5,7 @@
  * Returns the destination database to a known "fresh install" state.
  *
  * Usage:
- *   php bin/reset-destination.php --snapshot [--file=<path>] [--config=<dir>]
+ *   php bin/reset-destination.php --snapshot [--file=<path>] [--config=<dir>] [--help]
  *       Dump every {prefix}* destination table to the baseline file.
  *       Run this ONCE while the destination is in the documented
  *       starting state (fresh WP install + harden-admin-id).
@@ -32,7 +32,7 @@
 
 declare(strict_types=1);
 
-require_once dirname( __DIR__ ) . '/vendor/autoload.php';
+require_once __DIR__ . '/bootstrap.php';
 
 use MergeMultisite\Config\ConfigException;
 use MergeMultisite\Config\ConfigLoader;
@@ -40,10 +40,18 @@ use MergeMultisite\Db\Connection;
 use MergeMultisite\Db\ConnectionException;
 use MergeMultisite\Destination\DestinationReset;
 use MergeMultisite\Support\CliArguments;
+use MergeMultisite\Support\CliUsage;
 use MergeMultisite\Support\Logger;
 
 $projectRoot = dirname( __DIR__ );
 $args = new CliArguments( $argv );
+
+if ( $args->has( 'help' ) ) {
+	CliUsage::printFileDocblock( __FILE__ );
+	exit( 0 );
+}
+
+CliUsage::printUsage( __FILE__ );
 $configDir = $args->get( 'config', $projectRoot . '/config' );
 $baselineFile = (string) $args->get( 'file', $projectRoot . '/' . DestinationReset::DEFAULT_BASELINE_FILE );
 $logger = new Logger( 'info' );

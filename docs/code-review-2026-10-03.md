@@ -229,6 +229,8 @@
     (d) A standalone README that drops the merge/multisite framing. The
     detectors, report writers (CSV/JSON/XLSX/summary), and needs-review
     pipeline need no changes.
+    Question: is there enough benefit in having a "cleanup" output to destination
+    database?
 
 - CR-407 — Status: Future idea · Priority: LOW
   (added 2026-10-08)
@@ -282,6 +284,28 @@
   - **Where it fits.** A needs-review group in `PostMigrator`, or a
     post-merge audit check that reports the duplicates rather than
     silently deleting — consistent with "never silently drop findings".
+
+- CR-409 — Status: Future idea · Priority: LOW
+  (added 2026-10-19)
+  - **Idea.** One shared Git repository `~/sites/ai-coding-docs` holding
+    the AI pair-programming guidance that currently lives as scattered
+    per-site copies: the pair-programming prompt
+    (`phpunit-testing/docs/guides/ai-pair-programming-prompt.md`), the
+    code-review prompt template
+    (`wpwm-color-palette-generator/docs/code-review-prompt-template.md`),
+    and `.devin/skills/generate-commit-message.md` (already copied
+    byte-identical into multiple repos). Edit once, every site inherits.
+  - **Shape.** One `ai-pair-programming.md` with a language-agnostic
+    Core plus `## PHP` and `## JavaScript/TypeScript` sections — not
+    per-language files, so the shared rules (tripwires, docblock style,
+    plan-first workflow) don't drift across copies. The code-review
+    template moves as-is; it is already language-sectioned.
+  - **How sites reference it.** Each project's `AGENTS.md` points at the
+    absolute path (`~/sites/ai-coding-docs/...`) and names which language
+    section applies. No symlinks needed.
+  - **Boundary.** Project-specific exceptions and project-specific
+    tooling stay in each project's own `AGENTS.md` — e.g. the
+    phpunit-testing framework's MSVC exception and `colored_message()`.
 
 ## Positive Observations
 

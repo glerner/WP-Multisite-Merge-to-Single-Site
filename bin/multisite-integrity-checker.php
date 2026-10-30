@@ -6,7 +6,7 @@
  * network, run before `migrate.php`. See PLAN.md §9.
  *
  * Usage:
- *   php bin/multisite-integrity-checker.php [--strict] [--config=/path/to/config/dir]
+ *   php bin/multisite-integrity-checker.php [--strict] [--config=/path/to/config/dir] [--help]
  *   php bin/multisite-integrity-checker.php --list-sites
  *   php bin/multisite-integrity-checker.php --list-sites-php > config/sites.php
  *
@@ -31,7 +31,7 @@
 
 declare(strict_types=1);
 
-require_once dirname( __DIR__ ) . '/vendor/autoload.php';
+require_once __DIR__ . '/bootstrap.php';
 
 use MergeMultisite\Audit\AuditFinding;
 use MergeMultisite\Audit\AuditRunner;
@@ -64,10 +64,18 @@ use MergeMultisite\Report\DivergentOptionsReportWriter;
 use MergeMultisite\Report\MediaFilenameReportWriter;
 use MergeMultisite\Report\MissingMediaCopyScriptWriter;
 use MergeMultisite\Support\CliArguments;
+use MergeMultisite\Support\CliUsage;
 use MergeMultisite\Support\Logger;
 
 $projectRoot = dirname( __DIR__ );
 $args = new CliArguments( $argv );
+
+if ( $args->has( 'help' ) ) {
+	CliUsage::printFileDocblock( __FILE__ );
+	exit( 0 );
+}
+
+CliUsage::printUsage( __FILE__ );
 
 $configDir = $args->get( 'config', $projectRoot . '/config' );
 $logger = new Logger( 'info', $projectRoot . '/var/logs/integrity-checker-' . date( 'Ymd-His' ) . '.log' );

@@ -16,7 +16,7 @@
  *     --api-token, or set `wpscan_api_token` in config.php
  *
  * Usage:
- *   php bin/run-wpscan.php --url=https://example.com [--api-token=...] [--config=/path/to/config/dir]
+ *   php bin/run-wpscan.php --url=https://example.com [--api-token=...] [--config=/path/to/config/dir] [--help]
  *
  * The free tier's 25-calls/day limit is why this only ever scans ONE
  * URL per invocation -- it is deliberately not wired up to loop over
@@ -27,24 +27,29 @@
 
 declare(strict_types=1);
 
-require_once dirname( __DIR__ ) . '/vendor/autoload.php';
+require_once __DIR__ . '/bootstrap.php';
 
 use MergeMultisite\Config\ConfigException;
 use MergeMultisite\Config\ConfigLoader;
 use MergeMultisite\Support\CliArguments;
+use MergeMultisite\Support\CliUsage;
 use MergeMultisite\Support\Logger;
 
 $projectRoot = dirname( __DIR__ );
 $args = new CliArguments( $argv );
+
+if ( $args->has( 'help' ) ) {
+	CliUsage::printFileDocblock( __FILE__ );
+	exit( 0 );
+}
+
+CliUsage::printUsage( __FILE__ );
+
 $logger = new Logger( 'info' );
 
 $url = $args->get( 'url' );
 if ( $url === null ) {
-	echo "Scans a live WordPress site for known vulnerable core, plugin, and theme versions using WPScan.\n";
-	echo "Install WPScan with: gem install wpscan\n\n";
-	echo "Get tokens to run scans, from https://wpscan.com/register (Researcher level 25 scans a day for free)\n\n";
-	echo "Usage:\n";
-	echo "  php bin/run-wpscan.php --url=https://example.com [--api-token=...] [--config=/path/to/config/dir]\n";
+	CliUsage::printFileDocblock( __FILE__ );
 	exit( 1 );
 }
 

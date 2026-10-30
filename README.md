@@ -335,7 +335,18 @@ or running `migrate.php` against that destination.
 php bin/harden-admin-id.php --dry-run
 php bin/harden-admin-id.php
 php bin/harden-admin-id.php --new-id=42
+php bin/harden-admin-id.php --rename-login
 ```
+
+The same run can also rename the admin's `user_login` — useful when the
+login was misspelled or is simply unwanted, which WP-CLI refuses to
+change ("User logins can't be changed"). Set `admin_user_login` in
+`config.php`'s `destination` section and a normal renumber run applies
+it to the new ID; `--rename-login` applies it alone, any time, to the
+configured `admin_user_id`. Both `user_login` and `user_nicename` are
+updated directly in `wp_users` (posts reference the user by ID, so no
+other rows need to change). If `admin_user_login` is not set,
+`--rename-login` aborts rather than inventing a login.
 
 ### `bin/reset-destination.php`
 
@@ -388,6 +399,11 @@ php bin/migrate.php                                # real run, all built phases
   `_wp_attachment_metadata` rewritten to the destination paths.
 - `--site=<blog_id>` — restrict to one subsite; handy for very large
   networks (run one site at a time).
+- `--migrate-admin-emails` — opt-in finalization step: writes the
+  `destination.admin_user_email` config value onto the admin account.
+  Leave it off during local testing so admin mail keeps going to the
+  local-development address (e.g. `*@*.lndo.site`) and the real mailbox
+  isn't flooded with test mail; pass it once testing is done.
 - **Idempotent / resumable** — every migrated row's origin is recorded
   in the destination's `{prefix}merge_migration_map` table, so
   re-running (or resuming after an interruption) skips already-migrated

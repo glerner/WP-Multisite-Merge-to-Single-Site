@@ -66,6 +66,31 @@ final class DatabaseConfigTest extends TestCase {
 		self::assertSame( 'localhost', $config->host );
 	}
 
+	public function testParsesAdminUserLogin(): void {
+		$config = DatabaseConfig::fromArray(
+			array(
+				'host'             => '127.0.0.1',
+				'database'         => 'db',
+				'username'         => 'root',
+				'table_prefix'     => 'wp_',
+				'uploads_path'     => '/tmp/uploads',
+				'admin_user_id'    => 83,
+				'admin_user_login' => 'renamed-admin',
+				'admin_user_email' => 'admin@example.com',
+			),
+			'destination'
+		);
+
+		self::assertSame( 83, $config->adminUserId );
+		self::assertSame( 'renamed-admin', $config->adminUserLogin );
+		self::assertSame( 'admin@example.com', $config->adminUserEmail );
+	}
+
+	public function testAdminUserLoginDefaultsToNull(): void {
+		self::assertNull( $this->makeConfig( 'wp_' )->adminUserLogin );
+		self::assertNull( $this->makeConfig( 'wp_' )->adminUserEmail );
+	}
+
 	private function makeConfig( string $prefix ): DatabaseConfig {
 		return DatabaseConfig::fromArray(
 			array(

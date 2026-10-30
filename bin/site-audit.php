@@ -9,7 +9,7 @@
  * identified and consolidated. See PLAN.md §8.
  *
  * Usage:
- *   php bin/site-audit.php --site=7
+ *   php bin/site-audit.php --site=7 [--help]
  *   php bin/site-audit.php            # bare invocation = --all-sites
  *   php bin/site-audit.php --all-sites
  *   php bin/site-audit.php --post-types=post,page
@@ -33,7 +33,7 @@
 
 declare(strict_types=1);
 
-require_once dirname( __DIR__ ) . '/vendor/autoload.php';
+require_once __DIR__ . '/bootstrap.php';
 
 use MergeMultisite\Config\ConfigException;
 use MergeMultisite\Config\ConfigLoader;
@@ -64,10 +64,18 @@ use MergeMultisite\Migration\TermMergeResolver;
 use MergeMultisite\Report\ContentAuditReportWriter;
 use MergeMultisite\Report\NeedsReviewReportWriter;
 use MergeMultisite\Support\CliArguments;
+use MergeMultisite\Support\CliUsage;
 use MergeMultisite\Support\Logger;
 
 $projectRoot = dirname( __DIR__ );
 $args = new CliArguments( $argv );
+
+if ( $args->has( 'help' ) ) {
+	CliUsage::printFileDocblock( __FILE__ );
+	exit( 0 );
+}
+
+CliUsage::printUsage( __FILE__ );
 
 $configDir = $args->get( 'config', $projectRoot . '/config' );
 $logger = new Logger( 'info', $projectRoot . '/var/logs/site-audit-' . date( 'Ymd-His' ) . '.log' );

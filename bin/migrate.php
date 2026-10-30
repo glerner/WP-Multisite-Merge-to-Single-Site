@@ -9,8 +9,7 @@
  * yet and will be appended here as it lands.
  *
  * Usage:
- *   php bin/migrate.php --move-media-only [--dry-run] [--site=<blog_id>]
- *   php bin/migrate.php [--dry-run] [--site=<blog_id>]
+ *   php bin/migrate.php [--move-media-only] [--dry-run] [--site=<blog_id>] [--migrate-admin-emails] [--config=<dir>] [--help]
  *
  * Options:
  *   --dry-run          Plan the whole run: resolve every destination
@@ -24,7 +23,15 @@
  *   --site=<blog_id>   Restrict to one subsite. Default: every included
  *                      (non-deleted) site. Useful for very large
  *                      networks -- run one site at a time.
+ *   --migrate-admin-emails  Finalize the destination admin's email:
+ *                      writes destination.admin_user_email to that
+ *                      account's user_email. Testing runs keep a
+ *                      local-only address (e.g. *@*.lndo.site) so real
+ *                      inboxes never get dev-site mail; pass this flag
+ *                      on the production-final run.
  *   --config=<dir>     Directory containing config.php etc. Defaults to ../config.
+ *                      (this script is in <program root>/bin, so <program root>/config
+ *                      is the expected location)
  *
  * Idempotency / resume (PLAN.md §10): every migrated row's origin is
  * recorded in the destination's `{prefix}merge_migration_map` table,
@@ -41,12 +48,13 @@
 
 declare(strict_types=1);
 
-require_once dirname( __DIR__ ) . '/vendor/autoload.php';
+require_once __DIR__ . '/bootstrap.php';
 
 use MergeMultisite\Config\ConfigException;
 use MergeMultisite\Config\ConfigLoader;
 use MergeMultisite\Db\Connection;
 use MergeMultisite\Db\ConnectionException;
+use MergeMultisite\Destination\AdminAccountUpdater;
 use MergeMultisite\Migration\CommentMigrator;
 use MergeMultisite\Migration\IdMap;
 use MergeMultisite\Migration\MediaMigrator;
@@ -63,10 +71,18 @@ use MergeMultisite\Migration\WidgetMigrator;
 use MergeMultisite\Report\MenuOverviewReportWriter;
 use MergeMultisite\Report\PostMigrationTodoWriter;
 use MergeMultisite\Support\CliArguments;
+use MergeMultisite\Support\CliUsage;
 use MergeMultisite\Support\Logger;
 
 $projectRoot = dirname( __DIR__ );
 $args = new CliArguments( $argv );
+
+if ( $args->has( 'help' ) ) {
+	CliUsage::printFileDocblock( __FILE__ );
+	exit( 0 );
+}
+
+CliUsage::printUsage( __FILE__ );
 $configDir = $args->get( 'config', $projectRoot . '/config' );
 
 $dryRun = $args->has( 'dry-run' );
@@ -148,6 +164,25 @@ try {
 		$reports['menus'] = ( new MenuMigrator() )->migrate( $source, $destination, $config, $sites, $idMap, $mapTable, $dryRun, $logger );
 		$reports['widgets'] = ( new WidgetMigrator() )->migrate( $source, $destination, $config, $sites, $idMap, $mapTable, $dryRun, $logger );
 		$reports['options'] = ( new OptionsMigrator() )->migrate( $source, $destination, $config, $sites, $idMap, $mapTable, $dryRun, $logger );
+	}
+
+	// --migrate-admin-emails: finalize the destination admin's email
+	// for production (see the file docblock). Runs outside the
+	// $mediaOnly guard so a media-only finalizing run can do it too.
+	if ( $args->has( 'migrate-admin-emails' ) ) {
+		$adminEmail = $config->destination->adminUserEmail;
+		$adminId    = $config->destination->adminUserId;
+		if ( $adminEmail === null || $adminId === null ) {
+			$logger->warning( '--migrate-admin-emails needs destination.admin_user_id and destination.admin_user_email set in config.php -- skipped.' );
+		} elseif ( filter_var( $adminEmail, FILTER_VALIDATE_EMAIL ) === false ) {
+			$logger->error( sprintf( 'destination.admin_user_email "%s" is not a valid email address.', $adminEmail ) );
+			exit( 1 );
+		} elseif ( $dryRun ) {
+			$logger->info( sprintf( '[dry-run] Would set admin user #%d email to %s.', $adminId, $adminEmail ) );
+		} else {
+			( new AdminAccountUpdater() )->setEmail( $destination, $adminId, $adminEmail );
+			$logger->info( sprintf( 'Finalized admin user #%d email -> %s.', $adminId, $adminEmail ) );
+		}
 	}
 
 	if ( ! $dryRun ) {

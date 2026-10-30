@@ -14,14 +14,15 @@ return array(
 
 	/*
 	 * ---------------------------------------------------------------
-	 * Source multisite database.
+	 * Source multisite database.config.sample.php
 	 * ---------------------------------------------------------------
 	 * `table_prefix` is the network's *base* table prefix (e.g. `wp_`
-	 * or `wp3_`). Per-site tables are derived from it following
+	 * or `wpRANDOMCHARS_`). Per-site tables are derived from it following
 	 * WordPress's own convention: `{table_prefix}{blog_id}_posts` for
 	 * every site except the main site (blog_id 1), which uses the bare
-	 * `{table_prefix}posts`. Never hardcode `wp_` — always read this
-	 * value from config.
+	 * `{table_prefix}posts`. Application *never* hardcodes `wp_` — always
+	 * read this value from config.
+	 * Good convention: always have a '_' suffix.
 	 *
 	 * `connection` controls how the host/port/socket are determined:
 	 *
@@ -29,7 +30,7 @@ return array(
 	 *
 	 *   'lando': ask Lando for the database container's current
 	 *   published port -- it changes every time the container is
-	 *   recreated, so a hardcoded port goes stale. Options:
+	 *   recreated, so a hardcodedconfig.sample.php port goes stale. Options:
 	 *       'service'      Lando service name (default "database")
 	 *       'project_path' dir containing .lando.yml (default: found
 	 *                      by walking up from 'uploads_path')
@@ -62,7 +63,7 @@ return array(
 
 	/*
 	 * ---------------------------------------------------------------
-	 * Destination single-site database.
+	 * Destination single-site datconfig.sample.phpabase.
 	 * ---------------------------------------------------------------
 	 */
 	'destination' => array(
@@ -78,6 +79,22 @@ return array(
 		// The user_id of the admin user you already created on the
 		// destination site. Never touched/duplicated by the migrator.
 		'admin_user_id' => 1,
+
+		// Optional: the user_login that admin account should have.
+		// WordPress refuses login changes everywhere (wp-admin,
+		// WP-CLI), so bin/harden-admin-id.php UPDATEs the row directly
+		// -- applied on a normal renumbering run, or on its own via
+		// `php bin/harden-admin-id.php --rename-login`. user_nicename
+		// (the /author/ URL slug) is rewritten to match.
+		// 'admin_user_login' => 'renamed-admin-login',
+
+		// Optional: the user_email that admin account should END UP
+		// with. During testing the account keeps a local-only address
+		// (e.g. *@*.lndo.site) so the client's real inbox is never
+		// flooded with dev-site mail; the address below is written only
+		// when migrate.php runs with --migrate-admin-emails, i.e. on
+		// the finalizing run.
+		// 'admin_user_email' => 'webmaster@example.com',
 	),
 
 	/*
@@ -107,7 +124,9 @@ return array(
 
 	// Audit/report suppression only: post types the audit and
 	// integrity checks never scan or report. Does NOT stop migration.
-	'audit_excluded_post_types' => array( 'revision' ),
+	// OEmbed should be deliberately reconnected
+
+	'audit_excluded_post_types' => array( 'revision', 'oembed_cache', 'deprecated_log' ),
 
 	// Post types that never migrate (leftover/cache/junk only).
 	// Everything else -- including form submissions, field

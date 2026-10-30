@@ -17,13 +17,16 @@ Verify everything with: `composer test && composer phpcs && composer phpstan`.
 
 | File                                  | Purpose                                                                                                                                                                                                                                                                                         |
 | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bin/migrate.php`                     | Migration entry point: runs the implemented phases in dependency order (users → terms → media → posts). `--dry-run`, `--move-media-only`, `--site=`, `--config=`. Writes run reports to `var/reports/`, logs to `var/logs/`, ID-map snapshots to `var/state/`.                                  |
+| `bin/migrate.php`                     | Migration entry point: runs the implemented phases in dependency order (users → terms → media → posts). `--dry-run`, `--move-media-only`, `--site=`, `--migrate-admin-emails` (writes `destination.admin_user_email` onto the admin account — the production-finalizing step), `--config=`. Writes run reports to `var/reports/`, logs to `var/logs/`, ID-map snapshots to `var/state/`.                                  |
 | `bin/site-audit.php`                  | Content/plugin-usage audit: scans posts across included sites, reports blocks/shortcodes/plugin footprints per page. Options: `--site=<id>`, `--all-sites`, `--post-types=…`, `--search=…`, `--config=<dir>`. Writes CSV + JSON + summary.md + XLSX to `var/reports/`, plus a needs-review CSV. |
 | `bin/multisite-integrity-checker.php` | Read-only pre-flight audit: runs every `AuditCheckInterface` check. `--strict`, `--list-sites`, `--config=`. Writes Markdown + JSON to `var/reports/` and a media-recovery script to `var/`.                                                                                                    |
-| `bin/harden-admin-id.php`             | Renumbers destination admin user away from ID 1 (run once, before migration; see `AdminIdRenumberer`).                                                                                                                                                                                          |
+| `bin/harden-admin-id.php`             | Renumbers destination admin user away from ID 1 (run once, before migration; see `AdminIdRenumberer`) and/or renames its `user_login`/`user_nicename` to the configured `destination.admin_user_login` (`--rename-login` runs the rename alone; see `AdminAccountUpdater`).                             |
 | `bin/reset-destination.php`           | Returns the destination DB to a known starting state: `--snapshot` dumps all `{prefix}*` tables to `var/state/destination-baseline.sql`; default drops them and re-imports that baseline (confirm prompt, `--yes` to skip); `--drop-only` empties the schema for `wp core install`. Uses resolved config credentials + `mysqldump`/`mysql`, no WP-CLI needed. |
 | `bin/check-connections.php`           | Pre-flight connection check: verifies both source and destination databases and uploads directories simultaneously in one PHP process.                                                                                                                                                           |
 | `bin/run-wpscan.php`                  | Optional wrapper around external `wpscan` CLI (Ruby gem) for vulnerability checks against a live URL.                                                                                                                                                                                           |
+| `bin/template-screenshots.php`        | Plans and takes per-template screenshots via `shot-scraper` for visual before/after comparison (see `TemplateShotPlan`). `--site=<id>`, `--dry-run`, `--config=`. Writes `shots.yml` + PNGs to `var/reports/template-shots/`. |
+| `bin/retag-templates.php`             | Repairs one SOURCE site: lists stale `wp_template`/`wp_template_part` rows owned by a dormant theme and retags them to the active stylesheet (`--apply`, optional `--only=<slug,...>` filter). Plain SQL on the source DB via `TemplateRetagger` — no WP-CLI needed. Supersedes `bin/retag-templates.sh`. |
+| `bin/bootstrap.php`                   | Not an entry point. Required first by every `bin/*.php`: loads the Composer autoloader and points PHP's error channel at `var/logs/php-errors.log` (all severities, stack traces untruncated, still echoed to STDERR).                                                                                |
 
 ## Configuration (`config/`)
 
@@ -345,6 +348,11 @@ security, backups, page builders).
 - `SitesPhpExporter` — Site list → paste-ready `sites.php` source
   (deleted sites included, marked `include=false` + `deleted=true`).
 - `Destination/AdminIdRenumberer` — SQL to move the admin off user ID 1.
+- `Destination/AdminAccountUpdater` — validates a configured
+  `admin_user_login` and UPDATEs `user_login` + `user_nicename` directly
+  (WordPress refuses login changes through wp-admin/WP-CLI, but
+  posts/comments key on ID); also `setEmail()` for the
+  `admin_user_email` finalize step.
 - `Destination/DestinationReset` — baseline snapshot/restore for the
   destination DB: prefix-filtered table listing (MySQL `SHOW TABLES`,
   SQLite `sqlite_master`), prefixed-table drop (FK checks off), and
@@ -363,6 +371,10 @@ security, backups, page builders).
   the bin scripts can warn on mismatch).
 - `TemplateShotPlan` — pure shot planner for `bin/template-screenshots.php`;
   shoots only templates/parts that actually render on a reachable page.
+- `TemplateRetagger` — plans and applies retagging of stale
+  `wp_template`/`wp_template_part` rows (post_name, wp_theme term
+  relationship, `_wp_page_template` refs) to the active stylesheet
+  on one source site, behind `bin/retag-templates.php`.
 - `PageTemplateResolver` — per-post template resolution
   (`_wp_page_template` or hierarchy) + status for the audit's
   `template`/`template_status` columns; sites whose effective theme

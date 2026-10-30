@@ -27,11 +27,23 @@ final class DatabaseConfig {
 	 *                                 comes from configuration.
 	 * @param string      $uploadsPath Absolute filesystem path to this site's
 	 *                                 wp-content/uploads directory.
-	 * @param int|null    $adminUserId For the destination only: the user_id of the
-	 *                                 admin user already created there, which the
-	 *                                 migrator must never touch or duplicate.
-	 * @param string      $label       Human-readable label used in error messages,
-	 *                                 e.g. "source" or "destination".
+	 * @param int|null    $adminUserId    For the destination only: the user_id of
+	 *                                    the admin user already created there,
+	 *                                    which the migrator must never touch or
+	 *                                    duplicate.
+	 * @param string|null $adminUserLogin For the destination only: the user_login
+	 *                                    that admin account should have, applied
+	 *                                    by bin/harden-admin-id.php (WordPress
+	 *                                    refuses login changes, so the tool
+	 *                                    UPDATEs the row directly).
+	 * @param string|null $adminUserEmail For the destination only: the user_email
+	 *                                    that admin account should end up with,
+	 *                                    applied by migrate.php
+	 *                                    --migrate-admin-emails. Testing keeps a
+	 *                                    safe local-only address so real inboxes
+	 *                                    never get dev-site mail.
+	 * @param string      $label          Human-readable label used in error messages,
+	 *                                    e.g. "source" or "destination".
 	 */
 	public function __construct(
 		public readonly string $host,
@@ -44,6 +56,8 @@ final class DatabaseConfig {
 		public readonly string $tablePrefix,
 		public readonly string $uploadsPath,
 		public readonly ?int $adminUserId = null,
+		public readonly ?string $adminUserLogin = null,
+		public readonly ?string $adminUserEmail = null,
 		public readonly string $label = 'database',
 	) {
 	}
@@ -82,6 +96,12 @@ final class DatabaseConfig {
 			tablePrefix: (string) $data['table_prefix'],
 			uploadsPath: (string) $data['uploads_path'],
 			adminUserId: isset( $data['admin_user_id'] ) ? (int) $data['admin_user_id'] : null,
+			adminUserLogin: isset( $data['admin_user_login'] ) && $data['admin_user_login'] !== ''
+				? (string) $data['admin_user_login']
+				: null,
+			adminUserEmail: isset( $data['admin_user_email'] ) && $data['admin_user_email'] !== ''
+				? (string) $data['admin_user_email']
+				: null,
 			label: $label,
 		);
 	}
